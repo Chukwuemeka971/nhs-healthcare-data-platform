@@ -1,0 +1,13 @@
+storage:
+  landing: "data/landing"
+  bronze: "data/bronze"
+  silver: "data/silver"
+  gold: "data/gold"
+  quarantine: "data/quarantine"
+
+logging:
+  level: INFO
+
+watermark:
+  file: "data/watermark.json"
+
