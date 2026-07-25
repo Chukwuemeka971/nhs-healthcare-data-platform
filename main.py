@@ -1,50 +1,95 @@
 from pyspark.sql import functions as F
 
 from src.utils.logger import get_logger
+from src.utils.spark import get_spark
+
 from src.extract.extract_patients import extract_patient_data
+
 from src.validate.validation import validate_required_columns
 from src.validate.validation_runner import run_quality_checks
+
 from src.load.load_bronze import write_bronze
-from src.load.load_silver import write_silver
 from src.load.load_quarantine import write_quarantine
-from src.watermark.watermark import read_watermark, update_watermark
+
+from src.watermark.watermark import (
+    read_watermark,
+    update_watermark
+)
+
 from src.transform.incremental import filter_new_records
+from src.transform.delta_merge import merge_patient_records
+
+from src.config.config import load_config
+
 
 logger = get_logger(__name__)
+config = load_config()
 
 
 def main():
 
     logger.info("Healthcare pipeline started.")
 
+    spark = get_spark("Healthcare Pipeline")
+
     # Read the watermark from the previous successful run
     watermark = read_watermark()
 
     # Extract patient data
     patients = extract_patient_data()
-    logger.info(f"Extracted records: {patients.count()}")
+
+    logger.info(
+        f"Extracted records: {patients.count()}"
+    )
 
     # Store raw data in Bronze
     write_bronze(patients)
 
     # Filter only new records
-    patients = filter_new_records(patients, watermark)
-    logger.info(f"Records after incremental filter: {patients.count()}")
+    patients = filter_new_records(
+        patients,
+        watermark
+    )
+
+    logger.info(
+        f"Records after incremental filter: {patients.count()}"
+    )
 
     # Stop if there is nothing new to process
     if patients.count() == 0:
-        logger.info("No new records found. Pipeline finished.")
+
+        logger.info(
+            "No new records found. Pipeline finished."
+        )
+
         return
 
     # Validate required columns
     validate_required_columns(patients)
 
     # Run data quality rules
-    valid_df, invalid_records = run_quality_checks(patients)
-    logger.info(f"Valid records: {valid_df.count()}")
+    valid_df, invalid_records = run_quality_checks(
+        patients
+    )
 
-    # Write valid records to the Silver layer
-    write_silver(valid_df)
+    logger.info(
+        f"Valid records: {valid_df.count()}"
+    )
+
+    # Merge records into Silver Delta table
+    logger.info(
+        "Merging records into Silver Delta table."
+    )
+
+    merge_patient_records(
+        spark,
+        valid_df,
+        config["storage"]["silver"] + "/patient_admissions"
+    )
+
+    logger.info(
+        "Silver Delta table updated successfully."
+    )
 
     # Quarantine invalid records
     rule_names = [
@@ -55,7 +100,10 @@ def main():
         "duplicate_patient_id"
     ]
 
-    for rule_name, invalid_df in zip(rule_names, invalid_records):
+    for rule_name, invalid_df in zip(
+        rule_names,
+        invalid_records
+    ):
 
         invalid_count = invalid_df.count()
 
@@ -93,4 +141,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()                                                             
+    main()
