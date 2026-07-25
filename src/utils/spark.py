@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Ensure the Spark driver and worker use the same Python interpreter
+os.environ["PYSPARK_PYTHON"] = sys.executable
+os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
 from pyspark.sql import SparkSession
 from delta import configure_spark_with_delta_pip
 

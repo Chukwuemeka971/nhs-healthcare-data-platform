@@ -8,18 +8,20 @@ config = load_config()
 
 
 def write_bronze(df):
+    dataset_name = config["datasets"]["patient_admissions"]
 
     bronze_path = os.path.join(
         config["storage"]["bronze"],
-        "patient_admissions"
+        dataset_name
     )
 
     logger.info(f"Writing Bronze data to {bronze_path}")
 
     (
         df.write
+        .format("delta")
         .mode("overwrite")
-        .parquet(bronze_path)
+        .save(bronze_path)
     )
 
     logger.info("Bronze write completed.")

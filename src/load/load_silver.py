@@ -8,8 +8,10 @@ config = load_config()
 
 
 def write_silver(df):
+    
+    dataset_name = config["datasets"]["patient_admissions"]
 
-    silver_path = os.path.join(config["storage"]["silver"],"patient_admissions")
+    silver_path = os.path.join(config["storage"]["silver"],dataset_name)
 
     logger.info(f"Writing Silver data to {silver_path}")
 

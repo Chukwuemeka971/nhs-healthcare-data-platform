@@ -33,18 +33,19 @@ def merge_patient_records(
             incoming_df.alias("source"),
             "target.patient_id = source.patient_id"
         )
-        .whenMatchedUpdateAll()
         .whenMatchedUpdate(
             set={
-                "patient_name": "source.patient_name",
-                "hospital": "source.hospital",
-                "ward": "source.ward",
-                "consultant": "source.consultant",
-                "admission_date": "source.admission_date",
-                "admission_type": "source.admission_type",
-                "updated_at": "source.updated_at",
-                "pipeline_name": "source.pipeline_name",
-                "batch_id": "source.batch_id"
+            "patient_name": "source.patient_name",
+            "age": "source.age",
+            "gender": "source.gender",
+            "hospital": "source.hospital",
+            "ward": "source.ward",
+            "consultant": "source.consultant",
+            "admission_date": "source.admission_date",
+            "admission_type": "source.admission_type",
+            "updated_at": "source.updated_at",
+            "pipeline_name": "source.pipeline_name",
+            "batch_id": "source.batch_id"
             }
         )
         .whenNotMatchedInsertAll()

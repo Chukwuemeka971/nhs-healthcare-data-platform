@@ -12,7 +12,7 @@ def check_missing_patient_id(df):
 #============================================================================
 #Invaid admission type
 #============================================================================
-VALID_TYPES = ["Emergency","Planned"]
+VALID_TYPES = ["Emergency","Elective","Transfer","Maternity"]
 
 def check_admission_type(df):
     invalid_df = df.filter(~col("admission_type").isin(VALID_TYPES))

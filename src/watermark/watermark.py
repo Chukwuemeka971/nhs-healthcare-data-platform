@@ -1,43 +1,32 @@
 import json
 import os
 
-from src.utils.config import load_config
+from src.config.config import load_config
 
 config = load_config()
+WATERMARK_FILE = config["watermark"]["file"]
 
 
 def read_watermark():
-
-    watermark_file = config["watermark"]["file"]
-
-    if not os.path.exists(watermark_file):
-
+    """
+    Read the watermark file.
+    Returns a dictionary or None if it doesn't exist.
+    """
+    if not os.path.exists(WATERMARK_FILE):
         return None
 
-    with open(watermark_file, "r") as file:
+    with open(WATERMARK_FILE, "r") as f:
+        return json.load(f)
 
-        try:
 
-            return json.load(file)
+def update_watermark(filename, processed_at):
+    """
+    Save the latest processed file information.
+    """
+    watermark = {
+        "last_processed_file": filename,
+        "processed_at": processed_at
+    }
 
-        except json.JSONDecodeError:
-
-            return None
-    
-
-#================================================================
-# Updating the watermark
-#================================================================
-def update_watermark(process_date):
-
-    watermark_file = config["watermark"]["file"]
-
-    with open(watermark_file, "w") as file:
-
-        json.dump(
-            {
-                "last_processed_date": process_date
-            },
-            file,
-            indent=4
-        )
+    with open(WATERMARK_FILE, "w") as f:
+        json.dump(watermark, f, indent=4)
