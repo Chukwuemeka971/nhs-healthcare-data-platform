@@ -8,10 +8,10 @@ from src.validate.quality_rules import (
 
 RULES = [
     check_missing_patient_id,
-    check_future_admission_date,
     check_missing_hospital,
-    check_admission_type,
-    check_duplicates
+    check_duplicates,
+    check_future_admission_date,
+    check_admission_type
 ]
 def run_quality_checks(df):
     invalid_records = []

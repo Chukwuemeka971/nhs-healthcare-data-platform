@@ -1,10 +1,13 @@
 import os
 from datetime import datetime
 
+from pyspark.sql.functions import col, trim, lower, when, to_date
+
 from src.config.config import load_config
 from src.extract.extract_patients import extract_patient_data
 from src.load.load_bronze import write_bronze
 from src.load.load_quarantine import write_quarantine
+from src.load.archive_file import archive_file
 from src.transform.add_audit_columns import add_audit_columns
 from src.transform.delta_merge import merge_patient_records
 from src.utils.logger import get_logger
@@ -15,7 +18,6 @@ from src.watermark.watermark import (
     read_watermark,
     update_watermark
 )
-from src.load.archive_file import archive_file
 
 logger = get_logger(__name__)
 config = load_config()
@@ -23,114 +25,209 @@ config = load_config()
 
 def main():
 
-    logger.info("Healthcare pipeline started.")
+    spark = None
 
-    spark = get_spark("Healthcare Pipeline")
+    try:
 
-    # Extract patient data and filename
-    patients, filename = extract_patient_data()
+        logger.info("Healthcare pipeline started.")
 
-    # Read watermark
-    watermark = read_watermark()
+        # --------------------------------------------------
+        # Create Spark Session
+        # --------------------------------------------------
 
-    # Skip if the file has already been processed
-    if (
-        watermark is not None
-        and watermark.get("last_processed_file") == filename
-    ):
-        logger.info(f"{filename} has already been processed.")
-        return
+        spark = get_spark("Healthcare Pipeline")
 
-    patient_count = patients.count()
+        # --------------------------------------------------
+        # Extract
+        # --------------------------------------------------
 
-    logger.info(f"Extracted records: {patient_count}")
+        patients, filename = extract_patient_data()
 
-    # Write raw data to Bronze
-    write_bronze(patients)
+        patients = patients.withColumn(
+            "admission_date",
+            to_date(col("admission_date"), "yyyy-MM-dd")
+        )
 
-    # Validate required columns
-    validate_required_columns(patients)
+        # Standardise hospital values
+        patients = patients.withColumn(
+            "hospital",
+            when(
+                lower(trim(col("hospital"))) == "nan",
+                None
+            ).otherwise(col("hospital"))
+        )
 
-    # Run data quality checks
-    valid_df, invalid_records = run_quality_checks(patients)
+        # --------------------------------------------------
+        # Watermark Check
+        # --------------------------------------------------
 
-    # Add audit columns
-    batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        watermark = read_watermark()
 
-    valid_df = add_audit_columns(
-        valid_df,
-        "healthcare_patient_pipeline",
-        batch_id
-    )
+        if (
+            watermark is not None
+            and watermark.get("last_processed_file") == filename
+        ):
+            logger.info(f"{filename} has already been processed.")
+            return
 
-    # Cache because it is used multiple times
-    valid_df = valid_df.cache()
+        patient_count = patients.count()
 
-    valid_count = valid_df.count()
+        logger.info(f"Extracted records: {patient_count}")
 
-    logger.info(f"Valid records: {valid_count}")
+        print("\n========== PATIENT SCHEMA ==========")
+        patients.printSchema()
+        print("===================================\n")
 
-    # Silver path
-    dataset_name = config["datasets"]["patient_admissions"]
+        # --------------------------------------------------
+        # Schema Validation
+        # --------------------------------------------------
 
-    silver_path = os.path.join(
-        config["storage"]["silver"],
-        dataset_name
-    )
+        validate_required_columns(patients)
 
-    logger.info("Merging records into Silver Delta table.")
+        # --------------------------------------------------
+        # Bronze Layer
+        # --------------------------------------------------
 
-    merge_patient_records(
-        spark,
-        valid_df,
-        silver_path
-    )
+        write_bronze(
+            patients,
+            spark
+        )
 
-    logger.info("Silver Delta table updated successfully.")
+        # --------------------------------------------------
+        # Data Quality Validation
+        # --------------------------------------------------
 
-    # Quarantine invalid records
-    rule_names = [
-        "missing_patient_id",
-        "missing_hospital",
-        "future_admission_date",
-        "invalid_admission_type",
-        "duplicate_patient_id"
-    ]
+        valid_df, invalid_records = run_quality_checks(
+            patients
+        )
 
-    for rule_name, invalid_df in zip(rule_names, invalid_records):
+        # --------------------------------------------------
+        # Audit Columns
+        # --------------------------------------------------
 
-        invalid_count = invalid_df.count()
+        batch_id = datetime.now().strftime(
+            "%Y%m%d_%H%M%S"
+        )
 
-        if invalid_count > 0:
+        valid_df = add_audit_columns(
+            valid_df,
+            "healthcare_patient_pipeline",
+            batch_id
+        )
+
+        valid_df = valid_df.cache()
+
+        valid_count = valid_df.count()
+
+        logger.info(
+            f"Valid records: {valid_count}"
+        )
+
+        # --------------------------------------------------
+        # Silver Layer
+        # --------------------------------------------------
+
+        dataset_name = config["datasets"]["patient_admissions"]
+
+        silver_path = os.path.join(
+            config["storage"]["silver"],
+            dataset_name
+        )
+
+        logger.info(
+            "Merging records into Silver Delta table."
+        )
+
+        merge_patient_records(
+            spark,
+            valid_df,
+            silver_path
+        )
+
+        logger.info(
+            "Silver Delta table updated successfully."
+        )
+
+        # --------------------------------------------------
+        # Quarantine
+        # --------------------------------------------------
+
+        rule_names = [
+            "missing_patient_id",
+            "missing_hospital",
+            "duplicate_patient_id",
+            "future_admission_date",
+            "invalid_admission_type"
+        ]
+
+        for rule_name, invalid_df in zip(
+            rule_names,
+            invalid_records
+        ):
+
+            invalid_count = invalid_df.count()
+
+            if invalid_count > 0:
+
+                logger.info(
+                    f"{invalid_count} records failed {rule_name}"
+                )
+
+                write_quarantine(
+                    invalid_df,
+                    rule_name
+                )
+
+        # --------------------------------------------------
+        # Watermark Update
+        # --------------------------------------------------
+
+        update_watermark(
+            filename,
+            datetime.now().isoformat()
+        )
+
+        logger.info(
+            f"Watermark updated. Last processed file: {filename}"
+        )
+
+        # --------------------------------------------------
+        # Archive Source File
+        # --------------------------------------------------
+
+        archive_file(filename)
+
+        logger.info(
+            f"{filename} archived successfully."
+        )
+
+        # --------------------------------------------------
+        # Release Cache
+        # --------------------------------------------------
+
+        valid_df.unpersist()
+
+        logger.info(
+            "Healthcare pipeline completed successfully."
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            f"Pipeline failed: {e}"
+        )
+
+        raise
+
+    finally:
+
+        if spark is not None:
+
+            spark.stop()
 
             logger.info(
-                f"{invalid_count} records failed {rule_name}"
+                "Spark session stopped."
             )
-
-            write_quarantine(
-                invalid_df,
-                rule_name
-            )
-
-    # Update watermark after successful processing
-    update_watermark(
-        filename,
-        datetime.now().isoformat()
-    )
-
-    logger.info(
-        f"Watermark updated. Last processed file: {filename}"
-    )
-
-    # Archive source file
-    archive_file(filename)
-
-    logger.info(f"{filename} archived successfully.")
-
-    # Release cached DataFrame
-    valid_df.unpersist()
-
-    logger.info("Healthcare pipeline completed successfully.")
 
 
 if __name__ == "__main__":

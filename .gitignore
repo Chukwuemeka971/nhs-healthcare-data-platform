@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Spark
+spark-warehouse/
+
+# Data folders
+data/bronze/
+data/silver/
+data/gold/
+data/quarantine/
+data/archive/
+
+# Runtime files
+data/watermark.json
+
+# Logs
+*.log
+
+.DS_Store
+Thumbs.db

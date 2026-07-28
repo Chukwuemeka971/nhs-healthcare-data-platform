@@ -1,4 +1,5 @@
 from pyspark.sql.functions import col, current_date
+from pyspark.sql.functions import col, trim, lower
 
 #==========================================================================
 #Checking for missing patient id
@@ -36,7 +37,6 @@ def check_missing_hospital(df):
     invalid_df = df.filter(col("hospital").isNull())
     valid_df = df.filter(col("hospital").isNotNull())
     return valid_df, invalid_df
-
 
 #===========================================================================
 #Checking for dupiicates
