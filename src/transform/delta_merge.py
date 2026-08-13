@@ -1,17 +1,35 @@
 from delta.tables import DeltaTable
 
+from pyspark.sql import DataFrame, SparkSession
+
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def merge_patient_records(
-    spark,
-    incoming_df,
-    silver_path
-):
+    spark: SparkSession,
+    incoming_df: DataFrame,
+    silver_path: str
+) -> None:
     """
-    Creates the Delta table on the first run.
-    Performs MERGE on subsequent runs.
+    Performs an incremental MERGE into the Silver Delta table.
+
+    If the table does not exist, it is created.
+
+    Existing patient records are updated.
+
+    New patient records are inserted.
     """
 
-    if not DeltaTable.isDeltaTable(spark, silver_path):
+    logger.info(
+        "Checking Silver Delta table."
+    )
+
+    if not DeltaTable.isDeltaTable(
+        spark,
+        silver_path
+    ):
 
         (
             incoming_df.write
@@ -20,7 +38,15 @@ def merge_patient_records(
             .save(silver_path)
         )
 
+        logger.info(
+            "Silver Delta table created."
+        )
+
         return
+
+    logger.info(
+        "Merging patient records."
+    )
 
     delta_table = DeltaTable.forPath(
         spark,
@@ -35,19 +61,24 @@ def merge_patient_records(
         )
         .whenMatchedUpdate(
             set={
-            "patient_name": "source.patient_name",
-            "age": "source.age",
-            "gender": "source.gender",
-            "hospital": "source.hospital",
-            "ward": "source.ward",
-            "consultant": "source.consultant",
-            "admission_date": "source.admission_date",
-            "admission_type": "source.admission_type",
-            "updated_at": "source.updated_at",
-            "pipeline_name": "source.pipeline_name",
-            "batch_id": "source.batch_id"
+                "patient_name": "source.patient_name",
+                "age": "source.age",
+                "gender": "source.gender",
+                "hospital": "source.hospital",
+                "department": "source.department", 
+                "ward": "source.ward",
+                "consultant": "source.consultant",
+                "admission_date": "source.admission_date",
+                "admission_type": "source.admission_type",
+                "updated_at": "source.updated_at",
+                "pipeline_name": "source.pipeline_name",
+                "batch_id": "source.batch_id"
             }
         )
         .whenNotMatchedInsertAll()
         .execute()
+    )
+
+    logger.info(
+        "Silver merge completed successfully."
     )

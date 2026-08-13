@@ -1,5 +1,6 @@
 from src.utils.spark import get_spark
 from src.utils.config import load_config
+from src.profiling.data_profiler import profile_dataframe
 import os
 
 spark = get_spark("Check bronze")
@@ -18,6 +19,9 @@ spark.read.parquet("data/quarantine/future_admission_date").show(truncate=False)
 print("Duplicate Patient ID")
 spark.read.parquet("data/quarantine/duplicate_patient_id").show(truncate=False)
 '''
+
+
+
 silver_path = os.path.join(
     config["storage"]["silver"],
     config["datasets"]["patient_admissions"]
@@ -37,6 +41,13 @@ bronze_df = (
         config["storage"]["bronze"],
         config["datasets"]["patient_admissions"]
     ))
+)
+
+
+
+profile_dataframe(
+    bronze_df,
+    "Patient Admissions Bronze"
 )
 
 print("\n========== BRONZE SCHEMA ==========")

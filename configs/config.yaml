@@ -8,6 +8,11 @@ storage:
 
 datasets:
   patient_admissions: "patient_admissions"
+  dim_hospital: "dim_hospital"
+  dim_department: "dim_department"
+  dim_patient: "dim_patient"
+  dim_date: "dim_date"
+  fact_patient_admissions: "fact_patient_admissions"
 
 files:
   day1: "patient_admissions_day1.xlsx"
@@ -16,6 +21,5 @@ logging:
   level: INFO
 
 watermark:
-  file: "data/watermark.json"#
-
-
+  file: "data/watermark.json"
+  

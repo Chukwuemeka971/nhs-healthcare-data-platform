@@ -1,71 +1,96 @@
-from pyspark.sql.functions import monotonically_increasing_id
-from pyspark.sql.functions import initcap, trim
-from pyspark.sql.functions import col, max, row_number, lit
-from pyspark.sql.window import Window
 from delta.tables import DeltaTable
 
-from src.utils.logger import get_logger
+from pyspark.sql import DataFrame, SparkSession, Window
+from pyspark.sql.functions import (
+    col,
+    initcap,
+    lit,
+    max as spark_max,
+    row_number,
+    trim,
+)
+
 from src.config.config import load_config
+from src.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
+config = load_config()
 
 
-def read_silver(spark):
+silver_path = (
+    f"{config['storage']['silver']}/"
+    f"{config['datasets']['patient_admissions']}"
+)
+
+gold_path = (
+    f"{config['storage']['gold']}/"
+    f"{config['datasets']['dim_hospital']}"
+)
+
+
+def read_silver(
+    spark: SparkSession
+) -> DataFrame:
     """
-    Read the Silver admissions data.
+    Reads the Silver patient admissions table.
     """
-    config = load_config()
 
-    silver_path = (
-        config["storage"]["silver"]
-        + "/"
-        + config["datasets"]["patient_admissions"]
+    logger.info(
+        "Reading Silver patient admissions."
     )
 
-    logger.info("Reading Silver data from %s", silver_path)
-
-    silver_df = (
+    return (
         spark.read
         .format("delta")
         .load(silver_path)
     )
 
-    return silver_df
 
-    
-def extract_hospitals(silver_df):
+def extract_hospitals(
+    silver_df: DataFrame
+) -> DataFrame:
     """
-    Extract distinct hospitals from the Silver layer.
+    Extracts distinct hospitals from
+    the Silver layer.
     """
-    logger.info("Extracting unique hospitals.")
 
-    hospital_df = (
+    logger.info(
+        "Extracting unique hospitals."
+    )
+
+    return (
         silver_df
         .select(
-            initcap(trim("hospital")).alias("hospital")
+            initcap(
+                trim(col("hospital"))
+            ).alias("hospital")
         )
-        .filter("hospital IS NOT NULL")
+        .filter(
+            col("hospital").isNotNull()
+        )
         .distinct()
     )
 
-    return hospital_df
 
-
-
-def read_dim_hospital(spark):
+def read_dim_hospital(
+    spark: SparkSession
+) -> DataFrame | None:
     """
-    Read the existing Hospital Dimension if it exists.
+    Reads the Hospital Dimension.
+
+    Returns:
+        Existing dimension or None.
     """
-    config = load_config()
 
-    gold_path = (
-        config["storage"]["gold"]
-        + "/dim_hospital"
-    )
+    if DeltaTable.isDeltaTable(
+        spark,
+        gold_path
+    ):
 
-    if DeltaTable.isDeltaTable(spark, gold_path):
-
-        logger.info("Existing Hospital Dimension found.")
+        logger.info(
+            "Existing Hospital Dimension found."
+        )
 
         return (
             spark.read
@@ -73,108 +98,125 @@ def read_dim_hospital(spark):
             .load(gold_path)
         )
 
-    logger.info("No existing Hospital Dimension found. Initial load.")
+    logger.info(
+        "Hospital Dimension does not exist."
+    )
 
     return None
 
 
-
-def generate_hospital_keys(hospital_df, existing_dim):
+def generate_hospital_keys(
+    hospital_df: DataFrame,
+    existing_dim: DataFrame | None
+) -> DataFrame | None:
     """
-    Generate surrogate keys for new hospitals.
-
-    Parameters:
-        hospital_df (DataFrame): Distinct hospitals extracted from Silver.
-        existing_dim (DataFrame | None): Existing Hospital Dimension.
-
-    Returns:
-        DataFrame: New hospitals with surrogate keys.
+    Generates surrogate keys for new hospitals.
     """
 
-    # First pipeline run
+    window = Window.orderBy(
+        "hospital"
+    )
+
+    # ------------------------------------------
+    # Initial Load
+    # ------------------------------------------
+
     if existing_dim is None:
 
-        logger.info("Initial load detected. Generating hospital keys from 1.")
+        logger.info(
+            "Initial Hospital Dimension load."
+        )
 
-        window = Window.orderBy("hospital")
-
-        hospital_df = (
+        return (
             hospital_df
             .withColumn(
                 "hospital_key",
                 row_number().over(window)
             )
-            .select("hospital_key", "hospital")
+            .select(
+                "hospital_key",
+                "hospital"
+            )
         )
 
-        return hospital_df
+    # ------------------------------------------
+    # Incremental Load
+    # ------------------------------------------
 
-    logger.info("Incremental load detected.")
-
-    # Get current maximum surrogate key
-    max_key = (
-        existing_dim
-        .select(max("hospital_key"))
-        .collect()[0][0]
+    logger.info(
+        "Incremental Hospital Dimension load."
     )
 
-    # Find hospitals that do not already exist
     new_hospitals = (
         hospital_df.alias("silver")
         .join(
-            existing_dim.alias("gold"),
-            col("silver.hospital") == col("gold.hospital"),
+            existing_dim.select(
+                "hospital"
+            ).alias("gold"),
+            col("silver.hospital")
+            == col("gold.hospital"),
             "left_anti"
         )
     )
 
-    # No new hospitals
-    if new_hospitals.isEmpty():
+    # ------------------------------------------
+    # Get Current Maximum Key
+    # ------------------------------------------
 
-        logger.info("No new hospitals found.")
+    max_key = (
+        existing_dim
+        .agg(
+            spark_max("hospital_key")
+            .alias("max_key")
+        )
+        .first()["max_key"]
+    ) or 0
 
-        return None
+    # ------------------------------------------
+    # Assign Keys to New Hospitals
+    #
+    # If no new hospitals exist, the returned
+    # DataFrame is simply empty.
+    # ------------------------------------------
 
-    logger.info("Assigning surrogate keys to new hospitals.")
-
-    window = Window.orderBy("hospital")
-
-    new_hospitals = (
+    return (
         new_hospitals
         .withColumn(
             "hospital_key",
-            row_number().over(window) + lit(max_key)
+            row_number().over(window)
+            + lit(max_key)
         )
-        .select("hospital_key", "hospital")
+        .select(
+            "hospital_key",
+            "hospital"
+        )
     )
 
-    return new_hospitals
 
-
-
-def write_dim_hospital(spark, hospital_df):
+def write_dim_hospital(
+    spark: SparkSession,
+    hospital_df: DataFrame | None
+) -> None:
     """
-    Write the Hospital Dimension to the Gold layer.
-
-    Performs an initial load if the table does not exist,
-    otherwise performs an incremental Delta MERGE.
+    Writes the Hospital Dimension.
     """
 
     if hospital_df is None:
-        logger.info("No new hospitals to load.")
+
+        logger.info(
+            "No Hospital Dimension data to write."
+        )
+
         return
 
-    config = load_config()
+    if not DeltaTable.isDeltaTable(
+        spark,
+        gold_path
+    ):
 
-    gold_path = (
-        config["storage"]["gold"]
-        + "/dim_hospital"
-    )
-
-    # Initial Load
-    if not DeltaTable.isDeltaTable(spark, gold_path):
-
-        logger.info("Creating Hospital Dimension.")
+        logger.info(
+            "Creating Hospital Dimension."
+        )
 
         (
             hospital_df.write
@@ -183,12 +225,15 @@ def write_dim_hospital(spark, hospital_df):
             .save(gold_path)
         )
 
-        logger.info("Hospital Dimension created successfully.")
+        logger.info(
+            "Hospital Dimension created successfully."
+        )
 
         return
 
-    # Incremental Load
-    logger.info("Updating Hospital Dimension.")
+    logger.info(
+        "Updating Hospital Dimension."
+    )
 
     delta_table = DeltaTable.forPath(
         spark,
@@ -201,31 +246,37 @@ def write_dim_hospital(spark, hospital_df):
             hospital_df.alias("source"),
             "target.hospital = source.hospital"
         )
-        .whenMatchedUpdate(
-            set={
-                "hospital": "source.hospital"
-            }
-        )
-        .whenNotMatchedInsert(
-            values={
-                "hospital_key": "source.hospital_key",
-                "hospital": "source.hospital"
-            }
-        )
+        .whenNotMatchedInsertAll()
         .execute()
     )
 
-    logger.info("Hospital Dimension updated successfully.")
+    logger.info(
+        "Hospital Dimension updated successfully."
+    )
 
 
+def build_dim_hospital(
+    spark: SparkSession
+) -> None:
+    """
+    Builds the Hospital Dimension.
+    """
 
-def build_dim_hospital(spark):
+    logger.info(
+        "Starting Hospital Dimension build."
+    )
 
-    silver_df = read_silver(spark)
+    silver_df = read_silver(
+        spark
+    )
 
-    hospital_df = extract_hospitals(silver_df)
+    hospital_df = extract_hospitals(
+        silver_df
+    )
 
-    existing_dim = read_dim_hospital(spark)
+    existing_dim = read_dim_hospital(
+        spark
+    )
 
     hospital_df = generate_hospital_keys(
         hospital_df,
@@ -237,6 +288,6 @@ def build_dim_hospital(spark):
         hospital_df
     )
 
-    
-
-
+    logger.info(
+        "Hospital Dimension build completed successfully."
+    )
