@@ -41,8 +41,8 @@ def test_write_bronze(
 
     monkeypatch.setattr(
         load_bronze,
-        "config",
-        test_config
+        "load_config",
+        lambda: test_config
     )
 
     # --------------------------------------------------
