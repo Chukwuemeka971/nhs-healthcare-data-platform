@@ -6,7 +6,7 @@ from pyspark.sql.functions import (
     lower,
     to_date,
     trim,
-    when
+    when,
 )
 
 from src.extract.extract_patients import extract_patient_data
@@ -18,14 +18,15 @@ from src.pipelines.silver_pipeline import build_silver_layer
 from src.utils.logger import get_logger
 from src.watermark.watermark import (
     read_watermark,
-    update_watermark
+    update_watermark,
 )
+
 
 logger = get_logger(__name__)
 
 
 def run_pipeline(
-    spark: SparkSession
+    spark: SparkSession,
 ) -> None:
     """
     Executes the complete Healthcare ETL pipeline.
@@ -44,9 +45,9 @@ def run_pipeline(
         ↓
     Gold Layer
         ↓
-    Update Metadata
-        ↓
     Archive Source File
+        ↓
+    Update Metadata
     """
 
     logger.info(
@@ -57,7 +58,9 @@ def run_pipeline(
     # Extract
     # --------------------------------------------------
 
-    patients, filename = extract_patient_data()
+    patients, filename = extract_patient_data(
+        spark
+    )
 
     if patients is None:
 
@@ -75,8 +78,8 @@ def run_pipeline(
         "admission_date",
         to_date(
             col("admission_date"),
-            "yyyy-MM-dd"
-        )
+            "yyyy-MM-dd",
+        ),
     )
 
     patients = patients.withColumn(
@@ -85,15 +88,15 @@ def run_pipeline(
             lower(
                 trim(col("hospital"))
             ) == "nan",
-            None
+            None,
         ).otherwise(
             col("hospital")
-        )
+        ),
     )
 
     logger.info(
         "Extracted %d records.",
-        patients.count()
+        patients.count(),
     )
 
     # --------------------------------------------------
@@ -104,12 +107,14 @@ def run_pipeline(
 
     if (
         watermark is not None
-        and watermark.get("last_processed_file") == filename
+        and watermark.get(
+            "last_processed_file"
+        ) == filename
     ):
 
         logger.info(
             "%s has already been processed.",
-            filename
+            filename,
         )
 
         return
@@ -121,7 +126,7 @@ def run_pipeline(
     build_bronze_layer(
         spark,
         patients,
-        filename
+        filename,
     )
 
     # --------------------------------------------------
@@ -130,7 +135,7 @@ def run_pipeline(
 
     build_silver_layer(
         spark,
-        patients
+        patients,
     )
 
     # --------------------------------------------------
@@ -139,28 +144,6 @@ def run_pipeline(
 
     build_gold_layer(
         spark
-    )
-
-    # --------------------------------------------------
-    # Metadata
-    # --------------------------------------------------
-
-    update_watermark(
-        filename,
-        datetime.now().isoformat()
-    )
-
-    logger.info(
-        "Watermark updated."
-    )
-
-    register_processed_file(
-        filename
-    )
-
-    logger.info(
-        "%s registered successfully.",
-        filename
     )
 
     # --------------------------------------------------
@@ -173,7 +156,32 @@ def run_pipeline(
 
     logger.info(
         "%s archived successfully.",
+        filename,
+    )
+
+    # --------------------------------------------------
+    # Metadata
+    #
+    # Only update metadata after all pipeline
+    # processing and archiving have succeeded.
+    # --------------------------------------------------
+
+    update_watermark(
+        filename,
+        datetime.now().isoformat(),
+    )
+
+    logger.info(
+        "Watermark updated."
+    )
+
+    register_processed_file(
         filename
+    )
+
+    logger.info(
+        "%s registered successfully.",
+        filename,
     )
 
     logger.info(

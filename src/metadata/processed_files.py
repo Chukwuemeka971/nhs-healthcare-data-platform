@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.utils.logger import get_logger
 
+
 logger = get_logger(__name__)
 
 REGISTRY_PATH = Path(
@@ -13,17 +14,35 @@ REGISTRY_PATH = Path(
 def load_registry() -> list[str]:
     """
     Loads the processed file registry.
+
+    Returns:
+        A list of previously processed filenames.
     """
 
     if not REGISTRY_PATH.exists():
+
+        logger.info(
+            "Processed file registry does not exist yet."
+        )
+
         return []
 
-    with REGISTRY_PATH.open(
-        "r",
-        encoding="utf-8"
-    ) as file:
+    try:
 
-        return json.load(file)
+        with REGISTRY_PATH.open(
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(file)
+
+    except json.JSONDecodeError:
+
+        logger.warning(
+            "Processed file registry contains invalid JSON."
+        )
+
+        return []
 
 
 def save_registry(
@@ -31,7 +50,16 @@ def save_registry(
 ) -> None:
     """
     Saves the processed file registry.
+
+    Args:
+        files:
+            List of processed filenames.
     """
+
+    REGISTRY_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     with REGISTRY_PATH.open(
         "w",
@@ -49,8 +77,14 @@ def already_processed(
     filename: str
 ) -> bool:
     """
-    Checks whether a file
-    has already been processed.
+    Checks whether a file has already been processed.
+
+    Args:
+        filename:
+            Name of the file to check.
+
+    Returns:
+        True if the file has already been processed.
     """
 
     return filename in load_registry()
@@ -60,19 +94,29 @@ def register_processed_file(
     filename: str
 ) -> None:
     """
-    Registers a processed file.
+    Registers a file as successfully processed.
+
+    Args:
+        filename:
+            Name of the processed file.
     """
 
     files = load_registry()
 
-    if filename not in files:
+    if filename in files:
 
-        files.append(
+        logger.info(
+            "File is already registered: %s",
             filename
         )
 
-        save_registry(files)
+        return
 
-        logger.info(
-            f"Registered {filename}"
-        )
+    files.append(filename)
+
+    save_registry(files)
+
+    logger.info(
+        "Registered processed file: %s",
+        filename
+    )
