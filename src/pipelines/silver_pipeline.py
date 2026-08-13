@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from pyspark.sql import DataFrame, SparkSession
@@ -10,15 +11,13 @@ from src.utils.logger import get_logger
 from src.validate.validation import validate_required_columns
 from src.validate.validation_runner import run_quality_checks
 
-import os
 
 logger = get_logger(__name__)
-config = load_config()
 
 
 def build_silver_layer(
     spark: SparkSession,
-    patients: DataFrame
+    patients: DataFrame,
 ) -> DataFrame:
     """
     Executes the complete Silver layer.
@@ -34,6 +33,8 @@ def build_silver_layer(
     logger.info(
         "Starting Silver layer."
     )
+
+    config = load_config()
 
     # -----------------------------------------
     # Schema Validation
@@ -64,18 +65,11 @@ def build_silver_layer(
     valid_df = add_audit_columns(
         valid_df,
         "healthcare_patient_pipeline",
-        batch_id
-    )
-
-    valid_df.cache()
-
-    logger.info(
-        "Valid records: %d",
-        valid_df.count()
+        batch_id,
     )
 
     # -----------------------------------------
-    # Silver Merge
+    # Silver Path
     # -----------------------------------------
 
     dataset_name = (
@@ -86,53 +80,74 @@ def build_silver_layer(
 
     silver_path = os.path.join(
         config["storage"]["silver"],
-        dataset_name
-    )
-
-    merge_patient_records(
-        spark,
-        valid_df,
-        silver_path
-    )
-
-    logger.info(
-        "Silver layer updated successfully."
+        dataset_name,
     )
 
     # -----------------------------------------
-    # Quarantine
+    # Cache valid records
     # -----------------------------------------
 
-    rule_names = [
-        "missing_patient_id",
-        "missing_hospital",
-        "duplicate_patient_id",
-        "future_admission_date",
-        "invalid_admission_type"
-    ]
+    valid_df.cache()
 
-    for rule_name, invalid_df in zip(
-        rule_names,
-        invalid_records
-    ):
+    try:
 
-        if not invalid_df.rdd.isEmpty():
+        logger.info(
+            "Valid records: %d",
+            valid_df.count(),
+        )
 
-            logger.warning(
-                "%s records failed %s",
-                invalid_df.count(),
-                rule_name
-            )
+        # -----------------------------------------
+        # Silver Merge
+        # -----------------------------------------
 
-            write_quarantine(
-                invalid_df,
-                rule_name
-            )
+        merge_patient_records(
+            spark,
+            valid_df,
+            silver_path,
+        )
 
-    valid_df.unpersist()
+        logger.info(
+            "Silver layer updated successfully."
+        )
 
-    logger.info(
-        "Silver layer completed successfully."
-    )
+        # -----------------------------------------
+        # Quarantine
+        # -----------------------------------------
 
-    return valid_df
+        rule_names = [
+            "missing_patient_id",
+            "missing_hospital",
+            "duplicate_patient_id",
+            "future_admission_date",
+            "invalid_admission_type",
+        ]
+
+        for rule_name, invalid_df in zip(
+            rule_names,
+            invalid_records,
+        ):
+
+            if not invalid_df.rdd.isEmpty():
+
+                invalid_count = invalid_df.count()
+
+                logger.warning(
+                    "%d records failed %s",
+                    invalid_count,
+                    rule_name,
+                )
+
+                write_quarantine(
+                    invalid_df,
+                    rule_name,
+                )
+
+        logger.info(
+            "Silver layer completed successfully."
+        )
+
+        return valid_df
+
+    finally:
+
+        valid_df.unpersist()
