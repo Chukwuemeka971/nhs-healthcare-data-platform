@@ -28,3 +28,4 @@ data/watermark.json
 
 .DS_Store
 Thumbs.db
+subtest/
