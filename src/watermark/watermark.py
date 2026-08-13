@@ -1,32 +1,101 @@
 import json
-import os
+from pathlib import Path
 
 from src.config.config import load_config
-
-config = load_config()
-WATERMARK_FILE = config["watermark"]["file"]
+from src.utils.logger import get_logger
 
 
-def read_watermark():
+logger = get_logger(__name__)
+
+
+def get_watermark_path() -> Path:
     """
-    Read the watermark file.
-    Returns a dictionary or None if it doesn't exist.
+    Returns the configured watermark file path.
     """
-    if not os.path.exists(WATERMARK_FILE):
+
+    config = load_config()
+
+    return Path(
+        config["watermark"]["file"]
+    )
+
+
+def read_watermark() -> dict | None:
+    """
+    Reads the watermark file.
+
+    Returns:
+        The watermark dictionary, or None if the file
+        does not exist.
+    """
+
+    watermark_path = get_watermark_path()
+
+    if not watermark_path.exists():
+
+        logger.info(
+            "Watermark file does not exist yet."
+        )
+
         return None
 
-    with open(WATERMARK_FILE, "r") as f:
-        return json.load(f)
+    try:
+
+        with watermark_path.open(
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(file)
+
+    except json.JSONDecodeError:
+
+        logger.warning(
+            "Watermark file contains invalid JSON."
+        )
+
+        return None
 
 
-def update_watermark(filename, processed_at):
+def update_watermark(
+    filename: str,
+    processed_at: str,
+) -> None:
     """
-    Save the latest processed file information.
+    Saves the latest processed file information.
+
+    Args:
+        filename:
+            Name of the latest successfully processed file.
+
+        processed_at:
+            Timestamp when processing completed.
     """
+
+    watermark_path = get_watermark_path()
+
+    watermark_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
     watermark = {
         "last_processed_file": filename,
-        "processed_at": processed_at
+        "processed_at": processed_at,
     }
 
-    with open(WATERMARK_FILE, "w") as f:
-        json.dump(watermark, f, indent=4)
+    with watermark_path.open(
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            watermark,
+            file,
+            indent=4,
+        )
+
+    logger.info(
+        "Watermark updated for file: %s",
+        filename,
+    )
