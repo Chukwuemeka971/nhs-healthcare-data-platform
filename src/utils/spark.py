@@ -7,7 +7,8 @@ from pyspark.sql import SparkSession
 from src.utils.logger import get_logger
 
 
-# Ensure Spark driver and workers use the same Python interpreter
+# Ensure Spark driver and workers use the same
+# Python interpreter.
 os.environ["PYSPARK_PYTHON"] = sys.executable
 os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
@@ -17,7 +18,8 @@ logger = get_logger(__name__)
 
 def get_spark(app_name: str) -> SparkSession:
     """
-    Creates and returns a SparkSession configured for Delta Lake.
+    Creates and returns a SparkSession configured
+    for Delta Lake.
 
     Args:
         app_name:
@@ -29,7 +31,7 @@ def get_spark(app_name: str) -> SparkSession:
 
     logger.info(
         "Starting Spark session: %s",
-        app_name
+        app_name,
     )
 
     builder = (
@@ -38,23 +40,23 @@ def get_spark(app_name: str) -> SparkSession:
         .master("local[2]")
         .config(
             "spark.sql.extensions",
-            "io.delta.sql.DeltaSparkSessionExtension"
+            "io.delta.sql.DeltaSparkSessionExtension",
         )
         .config(
             "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .config(
             "spark.sql.shuffle.partitions",
-            "2"
+            "2",
         )
         .config(
             "spark.default.parallelism",
-            "2"
+            "2",
         )
         .config(
             "spark.ui.enabled",
-            "false"
+            "false",
         )
     )
 
