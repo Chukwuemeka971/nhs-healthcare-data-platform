@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime, UTC
 
-from src.utils.config import load_config
+from src.config.config import load_config
 
 config = load_config()
 

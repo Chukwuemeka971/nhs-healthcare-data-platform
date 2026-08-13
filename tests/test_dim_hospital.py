@@ -1,15 +1,11 @@
-from delta.tables import DeltaTable
-
 from src.gold.dim_hospital import (
     extract_hospitals,
     generate_hospital_keys,
-    write_dim_hospital,
 )
 
 
 def test_dim_hospital_initial_load(
     spark,
-    tmp_path
 ):
     """
     Tests the initial Hospital Dimension load.
@@ -18,17 +14,9 @@ def test_dim_hospital_initial_load(
 
     1. Distinct hospitals are extracted.
     2. Surrogate keys are generated.
-    3. The Delta dimension is created.
-    4. Hospital records are written successfully.
+    3. Keys start at 1.
+    4. The expected hospital records are produced.
     """
-
-    # --------------------------------------------------
-    # Temporary Gold path
-    # --------------------------------------------------
-
-    gold_path = str(
-        tmp_path / "dim_hospital"
-    )
 
     # --------------------------------------------------
     # Create test Silver data
@@ -44,7 +32,7 @@ def test_dim_hospital_initial_load(
             "patient_id",
             "hospital",
             "department",
-        ]
+        ],
     )
 
     # --------------------------------------------------
@@ -55,60 +43,40 @@ def test_dim_hospital_initial_load(
         silver_df
     )
 
-    assert hospital_df.count() == 2
-
     # --------------------------------------------------
     # Generate surrogate keys
     # --------------------------------------------------
 
     hospital_df = generate_hospital_keys(
         hospital_df,
-        None
+        None,
     )
 
     # --------------------------------------------------
-    # Verify surrogate keys
+    # Collect once
     # --------------------------------------------------
 
-    assert hospital_df.count() == 2
-
-    assert (
-        hospital_df
-        .select("hospital_key")
-        .distinct()
-        .count()
-        == 2
-    )
-
-    # Keys should start at 1
-    keys = [
-        row["hospital_key"]
-        for row in hospital_df
-        .select("hospital_key")
-        .collect()
-    ]
-
-    assert sorted(keys) == [1, 2]
+    rows = hospital_df.collect()
 
     # --------------------------------------------------
-    # Write dimension
+    # Assertions
     # --------------------------------------------------
 
-    original_function = None
-
-    # The production function reads its Gold path
-    # from config, so this test focuses on the
-    # transformation/key-generation logic.
-    #
-    # Verify the generated dimension schema/content.
-    # --------------------------------------------------
+    assert len(rows) == 2
 
     assert "hospital_key" in hospital_df.columns
     assert "hospital" in hospital_df.columns
 
+    keys = sorted(
+        row["hospital_key"]
+        for row in rows
+    )
+
+    assert keys == [1, 2]
+
     hospitals = {
         row["hospital"]
-        for row in hospital_df.collect()
+        for row in rows
     }
 
     assert hospitals == {

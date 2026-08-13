@@ -3,22 +3,18 @@ from src.utils.spark import get_spark
 
 def test_spark_connection():
 
-    spark = None
+    """
+    Tests that Spark can be created and execute
+    a simple DataFrame operation.
+    """
 
-    try:
+    spark = get_spark(
+        "Spark Connection Test"
+    )
 
-        spark = get_spark(
-            "Spark Connection Test"
-        )
+    result = (
+        spark.range(10)
+        .count()
+    )
 
-        result = (
-            spark.range(10)
-            .count()
-        )
-
-        assert result == 10
-
-    finally:
-
-        if spark is not None:
-            spark.stop()
+    assert result == 10

@@ -6,7 +6,7 @@ import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
 
 from src.metadata.processed_files import already_processed
-from src.utils.config import load_config
+from src.config.config import load_config
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)

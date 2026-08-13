@@ -62,8 +62,6 @@ def test_dim_hospital_incremental_load(
         silver_df
     )
 
-    assert hospital_df.count() == 3
-
     # --------------------------------------------------
     # Generate incremental hospital keys
     # --------------------------------------------------
@@ -74,49 +72,22 @@ def test_dim_hospital_incremental_load(
     )
 
     # --------------------------------------------------
-    # Only the new hospital should remain
+    # Collect result once
     # --------------------------------------------------
 
-    assert new_hospitals.count() == 1
+    rows = new_hospitals.collect()
 
     # --------------------------------------------------
-    # Verify new hospital
+    # Verify only one new hospital was returned
     # --------------------------------------------------
 
-    new_hospital = (
-        new_hospitals
-        .collect()[0]
-    )
+    assert len(rows) == 1
+
+    # --------------------------------------------------
+    # Verify new hospital and surrogate key
+    # --------------------------------------------------
+
+    new_hospital = rows[0]
 
     assert new_hospital["hospital"] == "New Hospital"
-
-    # --------------------------------------------------
-    # Verify surrogate key
-    # --------------------------------------------------
-
     assert new_hospital["hospital_key"] == 3
-
-    # --------------------------------------------------
-    # Verify existing hospitals were not returned
-    # --------------------------------------------------
-
-    hospitals = {
-        row["hospital"]
-        for row in new_hospitals.collect()
-    }
-
-    assert hospitals == {
-        "New Hospital"
-    }
-
-    # --------------------------------------------------
-    # Verify generated keys are unique
-    # --------------------------------------------------
-
-    assert (
-        new_hospitals
-        .select("hospital_key")
-        .distinct()
-        .count()
-        == 1
-    )

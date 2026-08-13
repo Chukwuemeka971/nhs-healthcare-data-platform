@@ -83,19 +83,23 @@ def test_dim_department_initial_load(
         silver_df
     )
 
-    # --------------------------------------------------
-    # Verify unique hospital/department combinations
-    #
-    # Expected:
-    #
-    # Royal Hospital → Cardiology
-    # Royal Hospital → Emergency
-    # City Hospital  → Neurology
-    #
-    # Total = 3
-    # --------------------------------------------------
+    extracted_rows = department_df.collect()
 
-    assert department_df.count() == 3
+    assert len(extracted_rows) == 3
+
+    extracted_departments = {
+        (
+            row["hospital"],
+            row["department"]
+        )
+        for row in extracted_rows
+    }
+
+    assert extracted_departments == {
+        ("Royal Hospital", "Cardiology"),
+        ("Royal Hospital", "Emergency"),
+        ("City Hospital", "Neurology"),
+    }
 
     # --------------------------------------------------
     # Attach hospital surrogate keys
@@ -106,32 +110,25 @@ def test_dim_department_initial_load(
         hospital_df
     )
 
+    attached_rows = department_df.collect()
+
     # --------------------------------------------------
     # Verify hospital keys were attached
     # --------------------------------------------------
 
-    assert (
-        department_df
-        .filter(
-            "hospital_key IS NULL"
-        )
-        .count()
-        == 0
+    assert all(
+        row["hospital_key"] is not None
+        for row in attached_rows
     )
 
     # --------------------------------------------------
-    # Verify Royal Hospital departments
+    # Verify hospital/department relationships
     # --------------------------------------------------
 
     royal_departments = {
         row["department"]
-        for row in (
-            department_df
-            .filter(
-                "hospital = 'Royal Hospital'"
-            )
-            .collect()
-        )
+        for row in attached_rows
+        if row["hospital"] == "Royal Hospital"
     }
 
     assert royal_departments == {
@@ -139,24 +136,33 @@ def test_dim_department_initial_load(
         "Emergency",
     }
 
-    # --------------------------------------------------
-    # Verify City Hospital department
-    # --------------------------------------------------
-
     city_departments = {
         row["department"]
-        for row in (
-            department_df
-            .filter(
-                "hospital = 'City Hospital'"
-            )
-            .collect()
-        )
+        for row in attached_rows
+        if row["hospital"] == "City Hospital"
     }
 
     assert city_departments == {
         "Neurology",
     }
+
+    # Verify correct hospital surrogate keys.
+
+    royal_hospital_keys = {
+        row["hospital_key"]
+        for row in attached_rows
+        if row["hospital"] == "Royal Hospital"
+    }
+
+    assert royal_hospital_keys == {1}
+
+    city_hospital_keys = {
+        row["hospital_key"]
+        for row in attached_rows
+        if row["hospital"] == "City Hospital"
+    }
+
+    assert city_hospital_keys == {2}
 
     # --------------------------------------------------
     # Generate Department surrogate keys
@@ -167,81 +173,28 @@ def test_dim_department_initial_load(
         None
     )
 
-    # --------------------------------------------------
-    # Verify department records
-    # --------------------------------------------------
-
-    assert department_df.count() == 3
+    final_rows = department_df.collect()
 
     # --------------------------------------------------
-    # Verify department_key exists
+    # Verify final department records
     # --------------------------------------------------
 
-    assert (
-        "department_key"
-        in department_df.columns
-    )
+    assert len(final_rows) == 3
+
+    assert "department_key" in department_df.columns
+    assert "hospital_key" in department_df.columns
+    assert "department" in department_df.columns
+    assert "created_at" in department_df.columns
+    assert "updated_at" in department_df.columns
 
     # --------------------------------------------------
-    # Verify department keys are unique
-    # --------------------------------------------------
-
-    assert (
-        department_df
-        .select("department_key")
-        .distinct()
-        .count()
-        == 3
-    )
-
-    # --------------------------------------------------
-    # Verify initial keys start at 1
+    # Verify department keys
     # --------------------------------------------------
 
     keys = [
         row["department_key"]
-        for row in (
-            department_df
-            .select("department_key")
-            .collect()
-        )
+        for row in final_rows
     ]
 
+    assert len(set(keys)) == 3
     assert sorted(keys) == [1, 2, 3]
-
-    # --------------------------------------------------
-    # Verify expected hospital keys
-    # --------------------------------------------------
-
-    royal_hospital_keys = {
-        row["hospital_key"]
-        for row in (
-            department_df
-            .filter(
-                "hospital = 'Royal Hospital'"
-            )
-            .collect()
-        )
-    }
-
-    assert royal_hospital_keys == {1}
-
-    city_hospital_keys = {
-        row["hospital_key"]
-        for row in (
-            department_df
-            .filter(
-                "hospital = 'City Hospital'"
-            )
-            .collect()
-        )
-    }
-
-    assert city_hospital_keys == {2}
-
-    # --------------------------------------------------
-    # Verify audit columns were generated
-    # --------------------------------------------------
-
-    assert "created_at" in department_df.columns
-    assert "updated_at" in department_df.columns

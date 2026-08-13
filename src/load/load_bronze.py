@@ -12,7 +12,7 @@ from src.schema.reader import get_existing_schema
 from src.schema.registry import register_schema_change
 from src.schema.report import log_schema_changes
 
-from src.utils.config import load_config
+from src.config.config import load_config
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)

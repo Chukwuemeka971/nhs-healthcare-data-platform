@@ -108,7 +108,7 @@ def read_dim_hospital(
 def generate_hospital_keys(
     hospital_df: DataFrame,
     existing_dim: DataFrame | None
-) -> DataFrame | None:
+) -> DataFrame:
     """
     Generates surrogate keys for new hospitals.
     """

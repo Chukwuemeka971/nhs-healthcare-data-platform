@@ -1,7 +1,7 @@
 import os
 
 from src.utils.logger import get_logger
-from src.utils.config import load_config
+from src.config.config import load_config
 from pyspark.sql.functions import lit
 
 logger = get_logger(__name__)
