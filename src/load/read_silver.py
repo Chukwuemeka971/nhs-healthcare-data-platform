@@ -6,7 +6,6 @@ from src.config.config import load_config
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
-config = load_config()
 
 
 def read_silver():
@@ -16,6 +15,8 @@ def read_silver():
         .appName("Read Silver")
         .getOrCreate()
     )
+
+    config = load_config()
 
     silver_path = os.path.join(config["storage"]["silver"],"patient_admissions")
 

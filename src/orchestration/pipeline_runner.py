@@ -21,7 +21,6 @@ from src.watermark.watermark import (
     update_watermark,
 )
 
-
 logger = get_logger(__name__)
 
 
@@ -45,9 +44,9 @@ def run_pipeline(
         ↓
     Gold Layer
         ↓
-    Archive Source File
-        ↓
     Update Metadata
+        ↓
+    Archive Source File
     """
 
     logger.info(
@@ -147,23 +146,10 @@ def run_pipeline(
     )
 
     # --------------------------------------------------
-    # Archive
-    # --------------------------------------------------
-
-    archive_file(
-        filename
-    )
-
-    logger.info(
-        "%s archived successfully.",
-        filename,
-    )
-
-    # --------------------------------------------------
     # Metadata
     #
-    # Only update metadata after all pipeline
-    # processing and archiving have succeeded.
+    # Update metadata only after all pipeline
+    # processing has completed successfully.
     # --------------------------------------------------
 
     update_watermark(
@@ -176,11 +162,27 @@ def run_pipeline(
     )
 
     register_processed_file(
-        filename
+        filename,
     )
 
     logger.info(
         "%s registered successfully.",
+        filename,
+    )
+
+    # --------------------------------------------------
+    # Archive
+    #
+    # Archive only after all processing and metadata
+    # updates have completed successfully.
+    # --------------------------------------------------
+
+    archive_file(
+        filename,
+    )
+
+    logger.info(
+        "%s archived successfully.",
         filename,
     )
 

@@ -23,11 +23,11 @@ def build_gold_layer(
     logger.info(
         "Starting Gold layer."
     )
-
+    # Build independent dimensions first
     build_dim_hospital(
         spark
     )
-
+    # Depends on Hospital Dimension
     build_dim_department(
         spark
     )
@@ -39,7 +39,7 @@ def build_gold_layer(
     create_date_dimension(
         spark
     )
-
+    # Build fact last because it depends on dimension keys
     build_fact_patient_admissions(
         spark
     )

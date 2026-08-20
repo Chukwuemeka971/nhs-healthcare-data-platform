@@ -5,10 +5,11 @@ from src.config.config import load_config
 from pyspark.sql.functions import lit
 
 logger = get_logger(__name__)
-config = load_config()
 
 
 def write_quarantine(df, rule_name):
+
+    config = load_config()
 
     quarantine_path = os.path.join(config["storage"]["quarantine"],rule_name)
 

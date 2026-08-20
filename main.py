@@ -23,7 +23,7 @@ def main():
 
         logger.exception(
             "Pipeline failed: %s",
-            error
+            error,
         )
 
         raise
