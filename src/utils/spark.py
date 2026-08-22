@@ -47,6 +47,10 @@ def get_spark(app_name: str) -> SparkSession:
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .config(
+            "spark.jars",
+            "jars/postgresql-42.7.3.jar",
+        )
+        .config(
             "spark.sql.shuffle.partitions",
             "2",
         )

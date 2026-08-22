@@ -7,7 +7,7 @@ from src.transform.delta_merge import merge_patient_records
 def test_silver_initial_load(
     spark,
     patient_dataframe,
-    tmp_path
+    tmp_path,
 ):
     """
     Tests the initial Silver Delta load.
@@ -35,43 +35,43 @@ def test_silver_initial_load(
         patient_dataframe
         .withColumn(
             "created_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "updated_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "pipeline_name",
-            lit("healthcare_patient_pipeline")
+            lit("healthcare_patient_pipeline"),
         )
         .withColumn(
             "batch_id",
-            lit("batch_001")
+            lit("batch_001"),
         )
     )
 
     # --------------------------------------------------
-    # Execute initial Silver load
+    # Execute Initial Silver Load
     # --------------------------------------------------
 
     merge_patient_records(
         spark,
         silver_df,
-        silver_path
+        silver_path,
     )
 
     # --------------------------------------------------
-    # Verify Delta table exists
+    # Verify Delta Table Exists
     # --------------------------------------------------
 
     assert DeltaTable.isDeltaTable(
         spark,
-        silver_path
+        silver_path,
     )
 
     # --------------------------------------------------
-    # Read Silver table
+    # Read Silver Table
     # --------------------------------------------------
 
     result_df = (
@@ -81,19 +81,20 @@ def test_silver_initial_load(
     )
 
     # --------------------------------------------------
-    # Verify record count
+    # Verify Record Count
     # --------------------------------------------------
 
     assert result_df.count() == 2
 
     # --------------------------------------------------
-    # Verify required columns
+    # Verify Required Columns
     # --------------------------------------------------
 
     expected_columns = [
+        "episode_id",
         "patient_id",
         "patient_name",
-        "age",
+        "date_of_birth",
         "gender",
         "hospital",
         "department",
@@ -104,7 +105,7 @@ def test_silver_initial_load(
         "created_at",
         "updated_at",
         "pipeline_name",
-        "batch_id"
+        "batch_id",
     ]
 
     for column_name in expected_columns:
@@ -112,7 +113,7 @@ def test_silver_initial_load(
         assert column_name in result_df.columns
 
     # --------------------------------------------------
-    # Verify patient IDs
+    # Verify Patient IDs
     # --------------------------------------------------
 
     patient_ids = {
@@ -124,5 +125,21 @@ def test_silver_initial_load(
 
     assert patient_ids == {
         "P001",
-        "P002"
+        "P002",
+    }
+
+    # --------------------------------------------------
+    # Verify Episode IDs
+    # --------------------------------------------------
+
+    episode_ids = {
+        row["episode_id"]
+        for row in result_df.select(
+            "episode_id"
+        ).collect()
+    }
+
+    assert episode_ids == {
+        "E001",
+        "E002",
     }

@@ -16,26 +16,22 @@ def merge_patient_records(
     """
     Performs an incremental MERGE into the Silver Delta table.
 
-    If the table does not exist, it is created.
+    Grain:
+        One row per episode_id.
 
-    Existing patient records are updated.
-
-    New patient records are inserted.
-
-    Args:
-        spark:
-            Active Spark session.
-
-        incoming_df:
-            Incoming patient admission records.
-
-        silver_path:
-            Path to the Silver Delta table.
+    Supports:
+        - Inserts
+        - Updates
+        - Approved schema evolution
     """
 
     logger.info(
         "Checking Silver Delta table."
     )
+
+    # ==========================================
+    # INITIAL LOAD
+    # ==========================================
 
     if not DeltaTable.isDeltaTable(
         spark,
@@ -59,8 +55,18 @@ def merge_patient_records(
 
         return
 
+    # ==========================================
+    # INCREMENTAL LOAD
+    # ==========================================
+
     logger.info(
-        "Merging patient records into Silver Delta table."
+        "Merging episode records into Silver Delta table."
+    )
+
+    # Enable Delta schema evolution for MERGE
+    spark.conf.set(
+        "spark.databricks.delta.schema.autoMerge.enabled",
+        "true",
     )
 
     delta_table = DeltaTable.forPath(
@@ -68,27 +74,23 @@ def merge_patient_records(
         silver_path,
     )
 
+    # Dynamically map incoming columns.
+    # Day 1/2: existing columns only
+    # Day 3: admission_source is included automatically
+
+    update_columns = {
+        column: f"source.{column}"
+        for column in incoming_df.columns
+    }
+
     (
         delta_table.alias("target")
         .merge(
             incoming_df.alias("source"),
-            "target.patient_id = source.patient_id",
+            "target.episode_id = source.episode_id",
         )
         .whenMatchedUpdate(
-            set={
-                "patient_name": "source.patient_name",
-                "age": "source.age",
-                "gender": "source.gender",
-                "hospital": "source.hospital",
-                "department": "source.department",
-                "ward": "source.ward",
-                "consultant": "source.consultant",
-                "admission_date": "source.admission_date",
-                "admission_type": "source.admission_type",
-                "updated_at": "source.updated_at",
-                "pipeline_name": "source.pipeline_name",
-                "batch_id": "source.batch_id",
-            }
+            set=update_columns,
         )
         .whenNotMatchedInsertAll()
         .execute()

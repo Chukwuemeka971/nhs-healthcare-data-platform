@@ -1,7 +1,10 @@
 import os
 
+from delta.tables import DeltaTable
+
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
+    col,
     current_timestamp,
     lit,
 )
@@ -18,6 +21,82 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# ==========================================================
+# BRONZE IDEMPOTENCY
+# ==========================================================
+
+def bronze_file_exists(
+    spark: SparkSession,
+    bronze_path: str,
+    filename: str,
+) -> bool:
+    """
+    Checks whether a source file has already been written
+    to the Bronze Delta table.
+
+    This protects Bronze from duplicate writes when a
+    pipeline fails after Bronze has completed and the
+    pipeline is later retried.
+
+    Returns:
+        True:
+            The source file already exists in Bronze.
+
+        False:
+            The source file does not exist in Bronze.
+    """
+
+    logger.info(
+        "Checking whether file already exists in Bronze: %s",
+        filename,
+    )
+
+    # Bronze table does not exist yet
+    if not DeltaTable.isDeltaTable(
+        spark,
+        bronze_path,
+    ):
+
+        logger.info(
+            "Bronze Delta table does not exist yet."
+        )
+
+        return False
+
+    # Read Bronze and check for the source file
+    file_exists = (
+        spark.read
+        .format("delta")
+        .load(bronze_path)
+        .filter(
+            col("source_file") == filename
+        )
+        .limit(1)
+        .count()
+        > 0
+    )
+
+    if file_exists:
+
+        logger.info(
+            "File already exists in Bronze: %s",
+            filename,
+        )
+
+    else:
+
+        logger.info(
+            "File does not exist in Bronze: %s",
+            filename,
+        )
+
+    return file_exists
+
+
+# ==========================================================
+# WRITE BRONZE
+# ==========================================================
+
 def write_bronze(
     df: DataFrame,
     filename: str,
@@ -26,20 +105,26 @@ def write_bronze(
     """
     Writes data to the Bronze layer.
 
-    Before writing, the function performs schema governance by:
+    Before writing, the function performs:
 
-    - Reading the existing schema.
-    - Comparing schemas.
-    - Logging schema changes.
-    - Evaluating whether the schema is acceptable.
-    - Registering approved schema changes.
+    - Bronze file-level idempotency checks.
+    - Schema governance.
+    - Schema comparison.
+    - Schema change logging.
+    - Schema change evaluation.
+    - Schema change registration.
+    - Bronze metadata enrichment.
+    - Delta append with schema evolution.
 
-    The function enriches the Bronze data with ingestion metadata
-    before appending it to the Bronze Delta table.
+    If the source file already exists in Bronze, the
+    Bronze write is skipped.
+
+    This allows the pipeline to safely retry after a
+    downstream failure without duplicating Bronze data.
 
     Args:
         df:
-            Spark DataFrame to write.
+            Incoming Spark DataFrame.
 
         filename:
             Source file name.
@@ -52,9 +137,15 @@ def write_bronze(
             If schema validation fails.
     """
 
+    # ----------------------------------------------------
+    # Configuration
+    # ----------------------------------------------------
+
     config = load_config()
 
-    dataset_name = config["datasets"]["patient_admissions"]
+    dataset_name = (
+        config["datasets"]["patient_admissions"]
+    )
 
     bronze_path = os.path.join(
         config["storage"]["bronze"],
@@ -62,13 +153,35 @@ def write_bronze(
     )
 
     logger.info(
-        "Writing Bronze data to %s",
+        "Preparing Bronze write to %s",
         bronze_path,
     )
 
     # ----------------------------------------------------
+    # Bronze Idempotency Check
+    # ----------------------------------------------------
+
+    if bronze_file_exists(
+        spark,
+        bronze_path,
+        filename,
+    ):
+
+        logger.warning(
+            "Bronze data already exists for file: %s. "
+            "Skipping Bronze write.",
+            filename,
+        )
+
+        return
+
+    # ----------------------------------------------------
     # Schema Governance
     # ----------------------------------------------------
+
+    logger.info(
+        "Starting schema governance."
+    )
 
     existing_schema = get_existing_schema(
         spark
@@ -116,9 +229,30 @@ def write_bronze(
                 changes
             )
 
+            logger.info(
+                "Schema changes registered successfully."
+            )
+
+        else:
+
+            logger.info(
+                "No schema changes detected."
+            )
+
+    else:
+
+        logger.info(
+            "No existing Bronze schema found. "
+            "Initial schema will be created."
+        )
+
     # ----------------------------------------------------
     # Bronze Metadata
     # ----------------------------------------------------
+
+    logger.info(
+        "Adding Bronze ingestion metadata."
+    )
 
     bronze_df = (
         df
@@ -140,6 +274,10 @@ def write_bronze(
     # Write Bronze
     # ----------------------------------------------------
 
+    logger.info(
+        "Writing new data to Bronze."
+    )
+
     (
         bronze_df.write
         .format("delta")
@@ -152,5 +290,7 @@ def write_bronze(
     )
 
     logger.info(
-        "Bronze layer written successfully."
+        "Bronze layer written successfully "
+        "for file: %s",
+        filename,
     )

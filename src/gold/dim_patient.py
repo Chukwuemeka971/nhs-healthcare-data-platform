@@ -66,7 +66,7 @@ def extract_patients(
         .select(
             "patient_id",
             "patient_name",
-            "age",
+            "date_of_birth",
             "gender"
         )
         .filter(
@@ -148,7 +148,7 @@ def generate_patient_keys(
                 "patient_key",
                 "patient_id",
                 "patient_name",
-                "age",
+                "date_of_birth",
                 "gender"
             )
             .withColumn(
@@ -201,7 +201,7 @@ def generate_patient_keys(
             "patient_key",
             "patient_id",
             "patient_name",
-            "age",
+            "date_of_birth",
             "gender"
         )
         .withColumn(

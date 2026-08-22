@@ -11,6 +11,12 @@ from pyspark.sql.functions import (
 
 from src.extract.extract_patients import extract_patient_data
 from src.load.archive_file import archive_file
+from src.metadata.pipeline_state import (
+    initialize_file_state,
+    is_layer_successful,
+    is_pipeline_complete,
+    update_layer_state,
+)
 from src.metadata.processed_files import register_processed_file
 from src.pipelines.bronze_pipeline import build_bronze_layer
 from src.pipelines.gold_pipeline import build_gold_layer
@@ -32,21 +38,26 @@ def run_pipeline(
 
     Workflow:
 
-    Extract
-        ↓
-    Standardise
-        ↓
-    Watermark Check
-        ↓
-    Bronze Layer
-        ↓
-    Silver Layer
-        ↓
-    Gold Layer
-        ↓
-    Update Metadata
-        ↓
-    Archive Source File
+        Extract
+            ↓
+        Standardise
+            ↓
+        Pipeline State
+            ↓
+        Watermark Check
+            ↓
+        Bronze
+            ↓
+        Silver
+            ↓
+        Gold
+            ↓
+        Update Metadata
+            ↓
+        Archive Source File
+
+    Pipeline state allows failed runs to resume from
+    the layer where processing stopped.
     """
 
     logger.info(
@@ -68,6 +79,14 @@ def run_pipeline(
         )
 
         return
+
+    # --------------------------------------------------
+    # Initialize Pipeline State
+    # --------------------------------------------------
+
+    initialize_file_state(
+        filename
+    )
 
     # --------------------------------------------------
     # Standardise
@@ -109,47 +128,196 @@ def run_pipeline(
         and watermark.get(
             "last_processed_file"
         ) == filename
+        and is_pipeline_complete(
+            filename
+        )
     ):
 
         logger.info(
-            "%s has already been processed.",
+            "%s has already completed the pipeline.",
             filename,
         )
 
         return
 
-    # --------------------------------------------------
-    # Bronze
-    # --------------------------------------------------
+    # ==================================================
+    # BRONZE
+    # ==================================================
 
-    build_bronze_layer(
-        spark,
-        patients,
+    if is_layer_successful(
         filename,
+        "bronze",
+    ):
+
+        logger.info(
+            "Bronze already completed for %s. "
+            "Skipping Bronze.",
+            filename,
+        )
+
+    else:
+
+        try:
+
+            logger.info(
+                "Starting Bronze layer for %s.",
+                filename,
+            )
+
+            build_bronze_layer(
+                spark,
+                patients,
+                filename,
+            )
+
+            update_layer_state(
+                filename,
+                "bronze",
+                "SUCCESS",
+            )
+
+            logger.info(
+                "Bronze completed successfully."
+            )
+
+        except Exception:
+
+            update_layer_state(
+                filename,
+                "bronze",
+                "FAILED",
+            )
+
+            logger.exception(
+                "Bronze layer failed."
+            )
+
+            raise
+
+    # ==================================================
+    # SILVER
+    # ==================================================
+
+    if is_layer_successful(
+        filename,
+        "silver",
+    ):
+
+        logger.info(
+            "Silver already completed for %s. "
+            "Skipping Silver.",
+            filename,
+        )
+
+    else:
+
+        try:
+
+            logger.info(
+                "Starting Silver layer for %s.",
+                filename,
+            )
+
+            build_silver_layer(
+                spark,
+                patients,
+            )
+
+            update_layer_state(
+                filename,
+                "silver",
+                "SUCCESS",
+            )
+
+            logger.info(
+                "Silver completed successfully."
+            )
+
+        except Exception:
+
+            update_layer_state(
+                filename,
+                "silver",
+                "FAILED",
+            )
+
+            logger.exception(
+                "Silver layer failed."
+            )
+
+            raise
+
+    # ==================================================
+    # GOLD
+    # ==================================================
+
+    if is_layer_successful(
+        filename,
+        "gold",
+    ):
+
+        logger.info(
+            "Gold already completed for %s. "
+            "Skipping Gold.",
+            filename,
+        )
+
+    else:
+
+        try:
+
+            logger.info(
+                "Starting Gold layer for %s.",
+                filename,
+            )
+
+            build_gold_layer(
+                spark
+            )
+
+            update_layer_state(
+                filename,
+                "gold",
+                "SUCCESS",
+            )
+
+            logger.info(
+                "Gold completed successfully."
+            )
+
+        except Exception:
+
+            update_layer_state(
+                filename,
+                "gold",
+                "FAILED",
+            )
+
+            logger.exception(
+                "Gold layer failed."
+            )
+
+            raise
+
+    # ==================================================
+    # VERIFY PIPELINE COMPLETION
+    # ==================================================
+
+    if not is_pipeline_complete(
+        filename
+    ):
+
+        raise RuntimeError(
+            f"Pipeline state indicates that "
+            f"{filename} has not completed all layers."
+        )
+
+    logger.info(
+        "All pipeline layers completed successfully."
     )
 
     # --------------------------------------------------
-    # Silver
-    # --------------------------------------------------
-
-    build_silver_layer(
-        spark,
-        patients,
-    )
-
-    # --------------------------------------------------
-    # Gold
-    # --------------------------------------------------
-
-    build_gold_layer(
-        spark
-    )
-
-    # --------------------------------------------------
-    # Metadata
-    #
-    # Update metadata only after all pipeline
-    # processing has completed successfully.
+    # Update Watermark
     # --------------------------------------------------
 
     update_watermark(
@@ -160,6 +328,10 @@ def run_pipeline(
     logger.info(
         "Watermark updated."
     )
+
+    # --------------------------------------------------
+    # Register Processed File
+    # --------------------------------------------------
 
     register_processed_file(
         filename,
@@ -172,9 +344,6 @@ def run_pipeline(
 
     # --------------------------------------------------
     # Archive
-    #
-    # Archive only after all processing and metadata
-    # updates have completed successfully.
     # --------------------------------------------------
 
     archive_file(

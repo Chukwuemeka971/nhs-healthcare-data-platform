@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from src.validate.quality_rules import (
     check_admission_type,
-    check_duplicates,
+    check_duplicate_episode_ids,
     check_future_admission_date,
     check_missing_hospital,
     check_missing_patient_id,
@@ -21,7 +21,7 @@ def test_missing_patient_id(patient_dataframe):
 
 def test_missing_patient_id_is_detected(
     spark,
-    patient_records
+    patient_records,
 ):
 
     patient_records[0]["patient_id"] = None
@@ -40,7 +40,7 @@ def test_missing_patient_id_is_detected(
 
 def test_missing_hospital_is_detected(
     spark,
-    patient_records
+    patient_records,
 ):
 
     patient_records[0]["hospital"] = None
@@ -59,7 +59,7 @@ def test_missing_hospital_is_detected(
 
 def test_invalid_admission_type_is_detected(
     spark,
-    patient_records
+    patient_records,
 ):
 
     patient_records[0]["admission_type"] = "Invalid Type"
@@ -78,7 +78,7 @@ def test_invalid_admission_type_is_detected(
 
 def test_future_admission_date_is_detected(
     spark,
-    patient_records
+    patient_records,
 ):
 
     patient_records[0]["admission_date"] = (
@@ -97,20 +97,24 @@ def test_future_admission_date_is_detected(
     assert invalid_df.count() == 1
 
 
-def test_duplicate_patient_id_is_detected(
+def test_duplicate_episode_id_is_detected(
     spark,
-    patient_records
+    patient_records,
 ):
 
-    patient_records.append(
+    duplicate_record = (
         patient_records[0].copy()
+    )
+
+    patient_records.append(
+        duplicate_record
     )
 
     df = spark.createDataFrame(
         patient_records
     )
 
-    valid_df, invalid_df = check_duplicates(
+    valid_df, invalid_df = check_duplicate_episode_ids(
         df
     )
 

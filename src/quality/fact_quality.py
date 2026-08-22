@@ -13,7 +13,7 @@ def check_null_surrogate_keys(
         "patient_key",
         "hospital_key",
         "department_key",
-        "date_key"
+        "date_key",
     ]
 
     for key in surrogate_keys:
@@ -31,6 +31,36 @@ def check_null_surrogate_keys(
             )
 
     print("✓ All surrogate key checks passed.")
+
+
+def check_duplicate_episode_ids(
+    fact_df: DataFrame
+):
+    """
+    Ensures episode_id is unique in the fact table.
+    """
+
+    duplicate_count = (
+        fact_df
+        .groupBy("episode_id")
+        .count()
+        .filter(col("count") > 1)
+        .count()
+    )
+
+    if duplicate_count > 0:
+
+        raise ValueError(
+            f"""
+            Fact table duplicate check failed.
+
+            {duplicate_count} duplicate episode_id values found.
+            """
+        )
+
+    print(
+        "✓ Episode ID uniqueness check passed."
+    )
 
 
 def check_row_count(
@@ -78,7 +108,8 @@ def check_foreign_key_relationship(
         fact_df.alias("f")
         .join(
             dimension_df.alias("d"),
-            col(f"f.{fact_key}") == col(f"d.{dimension_key}"),
+            col(f"f.{fact_key}")
+            == col(f"d.{dimension_key}"),
             "leftanti"
         )
     )
@@ -100,3 +131,73 @@ def check_foreign_key_relationship(
     print(
         f"✓ Referential integrity passed for {fact_key}"
     )
+
+
+def check_fact_quality(
+    silver_df: DataFrame,
+    fact_df: DataFrame,
+    patient_df: DataFrame,
+    hospital_df: DataFrame,
+    department_df: DataFrame,
+    date_df: DataFrame
+):
+    """
+    Runs all fact table quality checks.
+    """
+
+    print("\nFACT TABLE QUALITY CHECKS")
+    print("-" * 50)
+
+    # 1. Check surrogate keys
+    check_null_surrogate_keys(
+        fact_df
+    )
+
+    # 2. Check episode_id uniqueness
+    check_duplicate_episode_ids(
+        fact_df
+    )
+
+    # 3. Check row count
+    check_row_count(
+        silver_df=silver_df,
+        fact_df=fact_df
+    )
+
+    # 4. Referential integrity checks
+    check_foreign_key_relationship(
+        fact_df=fact_df,
+        dimension_df=patient_df,
+        fact_key="patient_key",
+        dimension_key="patient_key"
+    )
+
+    check_foreign_key_relationship(
+        fact_df=fact_df,
+        dimension_df=hospital_df,
+        fact_key="hospital_key",
+        dimension_key="hospital_key"
+    )
+
+    check_foreign_key_relationship(
+        fact_df=fact_df,
+        dimension_df=department_df,
+        fact_key="department_key",
+        dimension_key="department_key"
+    )
+
+    check_foreign_key_relationship(
+        fact_df=fact_df,
+        dimension_df=date_df,
+        fact_key="date_key",
+        dimension_key="date_key"
+    )
+
+    print(
+        "✓ All fact quality checks passed."
+    )
+
+    return {
+        "table": "fact_patient_admissions",
+        "status": "PASS"
+    }

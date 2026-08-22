@@ -122,14 +122,14 @@ def test_fact_patient_admissions_incremental_load(
                 1,
                 "P001",
                 "John Smith",
-                45,
+                date(1981,5,15),
                 "Male",
             ),
             (
                 2,
                 "P002",
                 "Mary Jones",
-                37,
+                date(1985,5,8),
                 "Female",
             ),
         ],
@@ -137,7 +137,7 @@ def test_fact_patient_admissions_incremental_load(
             "patient_key",
             "patient_id",
             "patient_name",
-            "age",
+            "date_of_birth",
             "gender",
         ],
     )
@@ -267,9 +267,10 @@ def test_fact_patient_admissions_incremental_load(
     # ======================================================
 
     new_record = {
+        "episode_id": "E003",
         "patient_id": "P003",
         "patient_name": "David Brown",
-        "age": 52,
+        "date_of_birth": date(1942,5,12),
         "gender": "Male",
         "hospital": "City Hospital",
         "department": "Neurology",
@@ -330,21 +331,21 @@ def test_fact_patient_admissions_incremental_load(
                 1,
                 "P001",
                 "John Smith",
-                45,
+                date(1945,5,15),
                 "Male",
             ),
             (
                 2,
                 "P002",
                 "Mary Jones",
-                37,
+                date(1937,5,8),
                 "Female",
             ),
             (
                 3,
                 "P003",
                 "David Brown",
-                52,
+                date(1952,7,23),
                 "Male",
             ),
         ],
@@ -352,7 +353,7 @@ def test_fact_patient_admissions_incremental_load(
             "patient_key",
             "patient_id",
             "patient_name",
-            "age",
+            "date_of_birth",
             "gender",
         ],
     )
@@ -528,6 +529,47 @@ def test_fact_patient_admissions_incremental_load(
     assert (
         final_fact_df
         .filter("patient_key = 2")
+        .count()
+        == 1
+    )
+
+    # Verify all episode IDs are unique.
+
+    assert (
+        final_fact_df
+        .filter("episode_id IS NULL")
+        .count()
+        == 0
+    )
+
+    assert (
+        final_fact_df
+        .groupBy("episode_id")
+        .count()
+        .filter("count > 1")
+        .count()
+        == 0
+    )
+
+    # Verify all expected episodes exist.
+
+    assert (
+        final_fact_df
+        .filter("episode_id = 'E001'")
+        .count()
+        == 1
+    )
+
+    assert (
+        final_fact_df
+        .filter("episode_id = 'E002'")
+        .count()
+        == 1
+    )
+
+    assert (
+        final_fact_df
+        .filter("episode_id = 'E003'")
         .count()
         == 1
     )

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: nhs_postgres
+
+    environment:
+      POSTGRES_DB: nhs_healthcare
+      POSTGRES_USER: nhs_user
+      POSTGRES_PASSWORD: nhs_password
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  postgres_data:

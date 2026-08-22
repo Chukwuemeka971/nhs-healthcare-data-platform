@@ -19,6 +19,8 @@ bronze_df = (
     .load(bronze_path)
 )
 
+print("Record_count:", bronze_df.count())
+
 bronze_df.printSchema()
 
 spark.stop()

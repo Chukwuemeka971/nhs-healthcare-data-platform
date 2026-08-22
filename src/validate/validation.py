@@ -7,14 +7,15 @@ logger = get_logger(__name__)
 
 REQUIRED_COLUMNS = [
     "patient_id",
+    "episode_id",
     "patient_name",
-    "age",
+    "date_of_birth",
     "gender",
     "hospital",
     "ward",
     "consultant",
     "admission_date",
-    "admission_type"
+    "admission_type",
 ]
 
 

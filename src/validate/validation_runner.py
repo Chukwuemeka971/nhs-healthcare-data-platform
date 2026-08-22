@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame
 from src.utils.logger import get_logger
 from src.validate.quality_rules import (
     check_admission_type,
-    check_duplicates,
+    check_duplicate_episode_ids,
     check_future_admission_date,
     check_missing_hospital,
     check_missing_patient_id,
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 RULES = [
     check_missing_patient_id,
     check_missing_hospital,
-    check_duplicates,
+    check_duplicate_episode_ids,
     check_future_admission_date,
     check_admission_type,
 ]

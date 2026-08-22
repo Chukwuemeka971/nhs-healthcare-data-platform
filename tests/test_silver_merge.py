@@ -7,16 +7,16 @@ from src.transform.delta_merge import merge_patient_records
 def test_silver_incremental_merge(
     spark,
     patient_dataframe,
-    tmp_path
+    tmp_path,
 ):
     """
     Tests the incremental Silver Delta MERGE.
 
     Verifies that:
 
-    1. An existing patient is updated.
-    2. A new patient is inserted.
-    3. Existing patients are not duplicated.
+    1. An existing episode is updated.
+    2. A new episode is inserted.
+    3. Existing episodes are not duplicated.
     4. Department changes are persisted.
     """
 
@@ -36,34 +36,34 @@ def test_silver_incremental_merge(
         patient_dataframe
         .withColumn(
             "created_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "updated_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "pipeline_name",
-            lit("healthcare_patient_pipeline")
+            lit("healthcare_patient_pipeline"),
         )
         .withColumn(
             "batch_id",
-            lit("batch_001")
+            lit("batch_001"),
         )
     )
 
     # --------------------------------------------------
-    # Create initial Silver table
+    # Create Initial Silver Table
     # --------------------------------------------------
 
     merge_patient_records(
         spark,
         first_batch,
-        silver_path
+        silver_path,
     )
 
     # --------------------------------------------------
-    # Confirm initial records
+    # Confirm Initial Records
     # --------------------------------------------------
 
     initial_df = (
@@ -74,104 +74,139 @@ def test_silver_incremental_merge(
 
     assert initial_df.count() == 2
 
+    # Verify initial episodes.
+
+    assert (
+        initial_df
+        .select("episode_id")
+        .distinct()
+        .count()
+        == 2
+    )
+
     # --------------------------------------------------
     # SECOND BATCH
     #
-    # P001 = existing patient → UPDATE
-    # P003 = new patient → INSERT
+    # E001 = existing episode → UPDATE
+    # E003 = new episode → INSERT
     # --------------------------------------------------
 
-    updated_patient = (
+    updated_episode = (
         first_batch
         .filter(
-            "patient_id = 'P001'"
+            "episode_id = 'E001'"
         )
         .withColumn(
             "patient_name",
-            lit("John Smith Updated")
+            lit("John Smith Updated"),
         )
         .withColumn(
-            "age",
-            lit(46)
+            "date_of_birth",
+            lit("1980-05-15").cast("date"),
         )
         .withColumn(
             "hospital",
-            lit("Updated Hospital")
+            lit("Updated Hospital"),
         )
         .withColumn(
             "department",
-            lit("Neurology")
+            lit("Neurology"),
         )
         .withColumn(
             "updated_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "pipeline_name",
-            lit("healthcare_patient_pipeline")
+            lit("healthcare_patient_pipeline"),
         )
         .withColumn(
             "batch_id",
-            lit("batch_002")
+            lit("batch_002"),
         )
     )
 
-    new_patient = (
+    new_episode = (
         first_batch
         .filter(
-            "patient_id = 'P002'"
+            "episode_id = 'E002'"
+        )
+        .withColumn(
+            "episode_id",
+            lit("E003"),
         )
         .withColumn(
             "patient_id",
-            lit("P003")
+            lit("P003"),
         )
         .withColumn(
             "patient_name",
-            lit("David Brown")
+            lit("David Brown"),
+        )
+        .withColumn(
+            "date_of_birth",
+            lit("1974-03-15").cast("date"),
+        )
+        .withColumn(
+            "gender",
+            lit("Male"),
         )
         .withColumn(
             "hospital",
-            lit("New Hospital")
+            lit("New Hospital"),
         )
         .withColumn(
             "department",
-            lit("Neurology")
+            lit("Neurology"),
+        )
+        .withColumn(
+            "ward",
+            lit("Ward C"),
+        )
+        .withColumn(
+            "consultant",
+            lit("Dr Green"),
         )
         .withColumn(
             "updated_at",
-            current_timestamp()
+            current_timestamp(),
         )
         .withColumn(
             "pipeline_name",
-            lit("healthcare_patient_pipeline")
+            lit("healthcare_patient_pipeline"),
         )
         .withColumn(
             "batch_id",
-            lit("batch_002")
-        )
-    )
-
-    # Make sure both DataFrames have identical columns/order.
-    second_batch = (
-        updated_patient
-        .select(*first_batch.columns)
-        .unionByName(
-            new_patient.select(*first_batch.columns)
+            lit("batch_002"),
         )
     )
 
     # --------------------------------------------------
-    # Perform incremental MERGE
+    # Create Second Batch
+    # --------------------------------------------------
+
+    second_batch = (
+        updated_episode
+        .select(*first_batch.columns)
+        .unionByName(
+            new_episode.select(
+                *first_batch.columns
+            )
+        )
+    )
+
+    # --------------------------------------------------
+    # Perform Incremental MERGE
     # --------------------------------------------------
 
     merge_patient_records(
         spark,
         second_batch,
-        silver_path
+        silver_path,
     )
 
     # --------------------------------------------------
-    # Read Silver after MERGE
+    # Read Silver After MERGE
     # --------------------------------------------------
 
     result_df = (
@@ -181,26 +216,28 @@ def test_silver_incremental_merge(
     )
 
     # --------------------------------------------------
-    # Verify total records
+    # Verify Total Records
     # --------------------------------------------------
+
+    # E001 + E002 + E003
 
     assert result_df.count() == 3
 
     # --------------------------------------------------
-    # Verify existing patient P001 was updated
+    # Verify Existing Episode E001 Was Updated
     # --------------------------------------------------
 
-    p001 = (
+    e001 = (
         result_df
         .filter(
-            "patient_id = 'P001'"
+            "episode_id = 'E001'"
         )
     )
 
-    assert p001.count() == 1
+    assert e001.count() == 1
 
     assert (
-        p001
+        e001
         .filter(
             "patient_name = 'John Smith Updated'"
         )
@@ -209,16 +246,16 @@ def test_silver_incremental_merge(
     )
 
     assert (
-        p001
+        e001
         .filter(
-            "age = 46"
+            "date_of_birth = DATE '1980-05-15'"
         )
         .count()
         == 1
     )
 
     assert (
-        p001
+        e001
         .filter(
             "hospital = 'Updated Hospital'"
         )
@@ -227,11 +264,11 @@ def test_silver_incremental_merge(
     )
 
     # --------------------------------------------------
-    # Verify department was updated
+    # Verify Department Was Updated
     # --------------------------------------------------
 
     assert (
-        p001
+        e001
         .filter(
             "department = 'Neurology'"
         )
@@ -240,20 +277,29 @@ def test_silver_incremental_merge(
     )
 
     # --------------------------------------------------
-    # Verify new patient P003 was inserted
+    # Verify New Episode E003 Was Inserted
     # --------------------------------------------------
 
-    p003 = (
+    e003 = (
         result_df
         .filter(
-            "patient_id = 'P003'"
+            "episode_id = 'E003'"
         )
     )
 
-    assert p003.count() == 1
+    assert e003.count() == 1
 
     assert (
-        p003
+        e003
+        .filter(
+            "patient_id = 'P003'"
+        )
+        .count()
+        == 1
+    )
+
+    assert (
+        e003
         .filter(
             "patient_name = 'David Brown'"
         )
@@ -262,7 +308,16 @@ def test_silver_incremental_merge(
     )
 
     assert (
-        p003
+        e003
+        .filter(
+            "date_of_birth = DATE '1974-03-15'"
+        )
+        .count()
+        == 1
+    )
+
+    assert (
+        e003
         .filter(
             "hospital = 'New Hospital'"
         )
@@ -271,23 +326,46 @@ def test_silver_incremental_merge(
     )
 
     # --------------------------------------------------
-    # Verify no duplicate P001
+    # Verify No Duplicate Episodes
     # --------------------------------------------------
 
     assert (
         result_df
-        .filter(
-            "patient_id = 'P001'"
-        )
+        .groupBy("episode_id")
+        .count()
+        .filter("count > 1")
+        .count()
+        == 0
+    )
+
+    # Verify each original/new episode exists exactly once.
+
+    assert (
+        result_df
+        .filter("episode_id = 'E001'")
+        .count()
+        == 1
+    )
+
+    assert (
+        result_df
+        .filter("episode_id = 'E002'")
+        .count()
+        == 1
+    )
+
+    assert (
+        result_df
+        .filter("episode_id = 'E003'")
         .count()
         == 1
     )
 
     # --------------------------------------------------
-    # Verify Delta table still exists
+    # Verify Delta Table Still Exists
     # --------------------------------------------------
 
     assert DeltaTable.isDeltaTable(
         spark,
-        silver_path
+        silver_path,
     )

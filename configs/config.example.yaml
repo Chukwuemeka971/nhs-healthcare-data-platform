@@ -14,9 +14,6 @@ datasets:
   dim_date: "dim_date"
   fact_patient_admissions: "fact_patient_admissions"
 
-files:
-  day1: "patient_admissions_day1.xlsx"
-
 logging:
   level: INFO
 
@@ -24,20 +21,10 @@ watermark:
   file: "data/watermark.json"
 
 postgres:
-
   host: 127.0.0.1
-
   port: 5433
-
   database: nhs_healthcare
-
   user: nhs_user
-
-  password: nhs_password
-
+  password: YOUR_POSTGRES_PASSWORD
   table: patient_admissions
-
-  jdbc_url: jdbc:postgresql://127.0.0.1:5433/nhs_healthcare
-
   jdbc_driver: org.postgresql.Driver
-  

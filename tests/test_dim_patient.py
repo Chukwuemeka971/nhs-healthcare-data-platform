@@ -9,11 +9,19 @@ def test_dim_patient_initial_load(
     spark,
     patient_dataframe,
     tmp_path,
-    monkeypatch
+    monkeypatch,
 ):
     """
     Tests the initial creation of the
     Patient Dimension.
+
+    Verifies that:
+
+    1. The Patient Dimension is created.
+    2. One row exists for each unique patient.
+    3. Patient surrogate keys are generated.
+    4. No duplicate patient IDs exist.
+    5. Required columns are present.
     """
 
     # ------------------------------------------
@@ -23,13 +31,13 @@ def test_dim_patient_initial_load(
     silver_path = os.path.join(
         str(tmp_path),
         "silver",
-        "patient_admissions"
+        "patient_admissions",
     )
 
     gold_path = os.path.join(
         str(tmp_path),
         "gold",
-        "dim_patient"
+        "dim_patient",
     )
 
     # ------------------------------------------
@@ -38,12 +46,12 @@ def test_dim_patient_initial_load(
 
     monkeypatch.setattr(
         "src.gold.dim_patient.silver_path",
-        silver_path
+        silver_path,
     )
 
     monkeypatch.setattr(
         "src.gold.dim_patient.gold_dim_patient_path",
-        gold_path
+        gold_path,
     )
 
     # ------------------------------------------
@@ -76,25 +84,34 @@ def test_dim_patient_initial_load(
     )
 
     # ------------------------------------------
-    # Assertions
+    # Expected unique patients
     # ------------------------------------------
 
-    assert result_df.count() == len(
+    expected_patient_count = (
         patient_dataframe
         .select("patient_id")
         .distinct()
-        .collect()
+        .count()
     )
 
+    # ------------------------------------------
+    # Assertions
+    # ------------------------------------------
+
+    # One dimension record per unique patient.
+    assert result_df.count() == expected_patient_count
+
+    # Patient surrogate keys must not be NULL.
     assert (
         result_df
         .filter(
-            result_df.patient_key.isNull()
+            "patient_key IS NULL"
         )
         .count()
         == 0
     )
 
+    # No duplicate patient IDs.
     assert (
         result_df
         .select("patient_id")
@@ -103,11 +120,12 @@ def test_dim_patient_initial_load(
         == result_df.count()
     )
 
+    # Required columns must exist.
     assert {
         "patient_key",
         "patient_id",
         "patient_name",
-        "age",
+        "date_of_birth",
         "gender",
         "created_at",
         "updated_at",

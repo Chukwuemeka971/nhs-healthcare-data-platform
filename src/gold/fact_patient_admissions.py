@@ -331,34 +331,13 @@ def find_new_fact_records(
         new_fact_df.alias("new")
         .join(
             existing_fact_df.select(
-                "patient_key",
-                "hospital_key",
-                "department_key",
-                "date_key",
+                "episode_id",
             ).alias("existing"),
-            (
-                col("new.patient_key")
-                == col("existing.patient_key")
-            )
-            &
-            (
-                col("new.hospital_key")
-                == col("existing.hospital_key")
-            )
-            &
-            (
-                col("new.department_key")
-                == col("existing.department_key")
-            )
-            &
-            (
-                col("new.date_key")
-                == col("existing.date_key")
-            ),
+            col("new.episode_id")
+            == col("existing.episode_id"),
             "left_anti",
         )
     )
-
 
 def generate_new_fact_keys(
     new_fact_df: DataFrame,
@@ -412,6 +391,7 @@ def build_fact_table(
     return (
         fact_df.select(
             "fact_key",
+            "episode_id",
             "patient_key",
             "hospital_key",
             "department_key",
@@ -483,10 +463,7 @@ def merge_fact_patient_admissions(
         .merge(
             new_fact_df.alias("source"),
             """
-            target.patient_key = source.patient_key
-            AND target.hospital_key = source.hospital_key
-            AND target.department_key = source.department_key
-            AND target.date_key = source.date_key
+            target.episode_id = source.episode_id
             """,
         )
         .whenNotMatchedInsertAll()
@@ -496,7 +473,6 @@ def merge_fact_patient_admissions(
     logger.info(
         "Fact Patient Admissions merge completed successfully."
     )
-
 
 # ==========================================================
 # BUILD FACT TABLE

@@ -122,14 +122,14 @@ def test_fact_patient_admissions_initial_load(
                 1,
                 "P001",
                 "John Smith",
-                45,
+                date(1981, 5, 15),
                 "Male",
             ),
             (
                 2,
                 "P002",
                 "Mary Jones",
-                37,
+                date(1988, 8, 20),
                 "Female",
             ),
         ],
@@ -137,7 +137,7 @@ def test_fact_patient_admissions_initial_load(
             "patient_key",
             "patient_id",
             "patient_name",
-            "age",
+            "date_of_birth",
             "gender",
         ],
     )
@@ -258,7 +258,6 @@ def test_fact_patient_admissions_initial_load(
     # ASSERTIONS
     # ======================================================
 
-    # Two Silver admissions create two fact rows.
     assert result_df.count() == 2
 
     assert fact_df.count() == 2
@@ -267,6 +266,24 @@ def test_fact_patient_admissions_initial_load(
     assert (
         fact_df
         .filter("fact_key IS NULL")
+        .count()
+        == 0
+    )
+
+    # Episode IDs are present.
+    assert (
+        fact_df
+        .filter("episode_id IS NULL")
+        .count()
+        == 0
+    )
+
+    # Episode IDs are unique.
+    assert (
+        fact_df
+        .groupBy("episode_id")
+        .count()
+        .filter("count > 1")
         .count()
         == 0
     )
@@ -294,6 +311,8 @@ def test_fact_patient_admissions_initial_load(
         .first()
     )
 
+    assert p001_fact is not None
+    assert p001_fact["episode_id"] == "E001"
     assert p001_fact["hospital_key"] == 1
     assert p001_fact["department_key"] == 1
     assert p001_fact["date_key"] == 20260110

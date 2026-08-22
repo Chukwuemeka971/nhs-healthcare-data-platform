@@ -122,31 +122,33 @@ def check_missing_hospital(
     return valid_df, invalid_df
 
 
-def check_duplicates(
+def check_duplicate_episode_ids(
     df: DataFrame
 ) -> tuple[DataFrame, DataFrame]:
     """
-    Identifies duplicate patient IDs.
+    Identifies duplicate episode IDs.
 
     Returns:
         tuple:
-            - valid_df: Records with unique patient IDs.
-            - invalid_df: Duplicate patient records.
+            - valid_df: Records with unique episode IDs.
+            - invalid_df: Duplicate episode records.
     """
 
-    logger.info("Checking for duplicate patient IDs.")
+    logger.info(
+        "Checking for duplicate episode IDs."
+    )
 
     duplicate_ids = (
-        df.groupBy("patient_id")
+        df.groupBy("episode_id")
         .count()
         .filter(col("count") > 1)
-        .select("patient_id")
+        .select("episode_id")
     )
 
     invalid_df = (
         df.join(
             duplicate_ids,
-            on="patient_id",
+            on="episode_id",
             how="inner"
         )
     )
@@ -154,11 +156,13 @@ def check_duplicates(
     valid_df = (
         df.join(
             duplicate_ids,
-            on="patient_id",
+            on="episode_id",
             how="left_anti"
         )
     )
 
-    logger.info("Duplicate patient ID check completed.")
+    logger.info(
+        "Duplicate episode ID check completed."
+    )
 
     return valid_df, invalid_df

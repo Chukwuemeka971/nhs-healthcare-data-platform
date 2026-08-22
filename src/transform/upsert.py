@@ -1,14 +1,11 @@
-from pyspark.sql.functions import col
-
-
 def split_new_and_existing(
     incoming_df,
     silver_df
 ):
     """
     Splits incoming records into:
-    - New patients
-    - Existing patients
+    - New episodes
+    - Existing episodes
     """
 
     if silver_df is None:
@@ -16,16 +13,16 @@ def split_new_and_existing(
 
     new_records = (
         incoming_df.join(
-            silver_df.select("patient_id"),
-            on="patient_id",
+            silver_df.select("episode_id"),
+            on="episode_id",
             how="left_anti"
         )
     )
 
     existing_records = (
         incoming_df.join(
-            silver_df.select("patient_id"),
-            on="patient_id",
+            silver_df.select("episode_id"),
+            on="episode_id",
             how="inner"
         )
     )

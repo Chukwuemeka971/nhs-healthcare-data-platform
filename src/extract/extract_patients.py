@@ -99,6 +99,31 @@ def extract_patient_data(
             len(pdf),
         )
 
+        # -----------------------------------------
+        # Date Conversion
+        # -----------------------------------------
+
+        date_columns = [
+            "date_of_birth",
+            "admission_date",
+        ]
+
+        for column in date_columns:
+
+            if column in pdf.columns:
+
+                pdf[column] = pd.to_datetime(
+                    pdf[column],
+                    errors="coerce",
+                ).dt.date
+        
+        logger.info(
+            "Pandas column types:\n%s",
+            pdf.dtypes,
+        )
+        # -----------------------------------------
+        # Pandas to Spark
+        # -----------------------------------------
         df = spark.createDataFrame(
             pdf
         )

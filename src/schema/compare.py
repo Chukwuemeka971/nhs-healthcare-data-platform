@@ -1,8 +1,10 @@
 from pyspark.sql.types import StructType
 
 
-def compare_schema(existing_schema: StructType,
-                   incoming_schema: StructType):
+def compare_schema(
+    existing_schema: StructType,
+    incoming_schema: StructType,
+):
     """
     Compare two Spark schemas and detect:
 
@@ -22,31 +24,33 @@ def compare_schema(existing_schema: StructType,
     }
 
     new_columns = [
-        col
-        for col in incoming
-        if col not in existing
+        column
+        for column in incoming
+        if column not in existing
     ]
 
     removed_columns = [
-        col
-        for col in existing
-        if col not in incoming
+        column
+        for column in existing
+        if column not in incoming
     ]
 
     type_changes = []
 
-    for col in existing.keys() & incoming.keys():
-        if existing[col] != incoming[col]:
+    for column in existing.keys() & incoming.keys():
+
+        if existing[column] != incoming[column]:
+
             type_changes.append(
                 {
-                    "column": col,
-                    "old_type": existing[col],
-                    "new_type": incoming[col]
+                    "column": column,
+                    "old_type": existing[column],
+                    "new_type": incoming[column],
                 }
             )
 
     return {
         "new_columns": new_columns,
         "removed_columns": removed_columns,
-        "type_changes": type_changes
+        "type_changes": type_changes,
     }

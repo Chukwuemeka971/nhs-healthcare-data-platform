@@ -11,6 +11,11 @@ from src.utils.logger import get_logger
 from src.validate.validation import validate_required_columns
 from src.validate.validation_runner import run_quality_checks
 
+from src.schema.compare import compare_schema
+from src.schema.decision import evaluate_schema_changes
+from src.schema.reader import get_existing_schema
+from src.schema.registry import register_schema_change
+from src.schema.report import log_schema_changes
 
 logger = get_logger(__name__)
 
@@ -19,6 +24,7 @@ def build_silver_layer(
     spark: SparkSession,
     patients: DataFrame,
 ) -> DataFrame:
+    
     """
     Executes the complete Silver layer.
 
@@ -35,6 +41,59 @@ def build_silver_layer(
     )
 
     config = load_config()
+
+    # -----------------------------------------
+    # Schema Evolution
+    # -----------------------------------------
+
+    existing_schema = get_existing_schema(
+        spark
+    )
+
+    if existing_schema is None:
+
+        logger.info(
+            "No existing Silver schema found. "
+            "Initial load approved."
+        )
+
+    else:
+
+        changes = compare_schema(
+            existing_schema,
+            patients.schema,
+        )
+
+        log_schema_changes(
+            changes
+        )
+
+        decision = evaluate_schema_changes(
+            changes
+        )
+
+        if not decision["approved"]:
+
+            logger.error(
+                "Schema validation failed: %s",
+                decision["reason"],
+            )
+
+            raise ValueError(
+                f"Schema validation failed: "
+                f"{decision['reason']}"
+            )
+
+        logger.info(
+            "Schema approved: %s",
+            decision["reason"],
+        )
+
+        if changes["new_columns"]:
+
+            register_schema_change(
+                changes
+            )
 
     # -----------------------------------------
     # Schema Validation
@@ -117,7 +176,7 @@ def build_silver_layer(
         rule_names = [
             "missing_patient_id",
             "missing_hospital",
-            "duplicate_patient_id",
+            "duplicate_episode_id",
             "future_admission_date",
             "invalid_admission_type",
         ]

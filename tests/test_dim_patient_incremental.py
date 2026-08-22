@@ -1,4 +1,5 @@
 import os
+from datetime import date, datetime
 
 from src.gold.dim_patient import build_dim_patient
 
@@ -7,7 +8,7 @@ def test_dim_patient_incremental_load(
     spark,
     patient_records,
     tmp_path,
-    monkeypatch
+    monkeypatch,
 ):
     """
     Tests that new patients are added during
@@ -21,13 +22,13 @@ def test_dim_patient_incremental_load(
     silver_path = os.path.join(
         str(tmp_path),
         "silver",
-        "patient_admissions"
+        "patient_admissions",
     )
 
     gold_path = os.path.join(
         str(tmp_path),
         "gold",
-        "dim_patient"
+        "dim_patient",
     )
 
     # ------------------------------------------
@@ -36,12 +37,12 @@ def test_dim_patient_incremental_load(
 
     monkeypatch.setattr(
         "src.gold.dim_patient.silver_path",
-        silver_path
+        silver_path,
     )
 
     monkeypatch.setattr(
         "src.gold.dim_patient.gold_dim_patient_path",
-        gold_path
+        gold_path,
     )
 
     # ==========================================
@@ -85,14 +86,18 @@ def test_dim_patient_incremental_load(
     new_record = {
         "patient_id": "P003",
         "patient_name": "James Wilson",
-        "age": 52,
+        "date_of_birth": date(1932, 11, 12),
         "gender": "Male",
         "hospital": "City Hospital",
         "department": "Neurology",
         "ward": "Ward C",
         "consultant": "Dr Green",
-        "admission_date": patient_records[0]["admission_date"],
-        "admission_type": "Emergency"
+        "admission_date": date(2026, 3, 15),
+        "admission_type": "Emergency",
+        "created_at": datetime(2026, 3, 15, 10, 0, 0),
+        "updated_at": datetime(2026, 3, 15, 10, 0, 0),
+        "pipeline_name": "healthcare_pipeline",
+        "batch_id": "batch_002",
     }
 
     updated_records = (

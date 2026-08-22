@@ -57,3 +57,5 @@ def register_schema_change(
             file,
             indent=4,
         )
+
+    

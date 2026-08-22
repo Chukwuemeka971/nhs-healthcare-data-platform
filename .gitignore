@@ -29,3 +29,7 @@ data/watermark.json
 .DS_Store
 Thumbs.db
 subtest/
+
+commands.md
+# Local configuration and secrets
+configs/config.yaml
